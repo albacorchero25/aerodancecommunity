@@ -1530,7 +1530,7 @@ function openGenModal(title, bodyHTML, saveFn, deleteFn) {
   var cb = document.createElement('button'); cb.className = 'btn btn-sm'; cb.textContent = 'Cancel·lar';
   cb.addEventListener('click', function() { closeModal('gen-modal'); }); foot.appendChild(cb);
   var sb = document.createElement('button'); sb.className = 'btn btn-primary btn-sm'; sb.textContent = 'Guardar';
-  sb.addEventListener('click', saveFn); foot.appendChild(sb);
+  sb.addEventListener('click', async function() { saveFn(); await saveToStorage(); }); foot.appendChild(sb);
   openModal('gen-modal');
 }
 
@@ -1564,8 +1564,69 @@ function updateStats() {
   var urgEl = gid('sv-urgent'); if (urgEl) urgEl.textContent = deadlines.filter(function(d) { var x = daysUntil(d.date); return x >= 0 && x <= 30; }).length;
 }
 
+// ══ PERSISTENT STORAGE ══
+var STORAGE_KEY = 'aerodance-hub-v1';
+
+async function saveToStorage() {
+  try {
+    var data = JSON.stringify({ posts, ideas, deadlines, editorialLinks, hashtags, networks, formats, pillars, tones, visualRules, categories, people, cfg, legendItems, userTabs, USERS });
+    await window.storage.set(STORAGE_KEY, data, true);
+  } catch(e) { console.warn('Storage save error:', e); }
+}
+
+async function loadFromStorage() {
+  try {
+    var result = await window.storage.get(STORAGE_KEY, true);
+    if (result && result.value) {
+      var d = JSON.parse(result.value);
+      if (d.posts) posts = d.posts;
+      if (d.ideas) ideas = d.ideas;
+      if (d.deadlines) deadlines = d.deadlines;
+      if (d.editorialLinks) editorialLinks = d.editorialLinks;
+      if (d.hashtags) hashtags = d.hashtags;
+      if (d.networks) networks = d.networks;
+      if (d.formats) formats = d.formats;
+      if (d.pillars) pillars = d.pillars;
+      if (d.tones) tones = d.tones;
+      if (d.visualRules) visualRules = d.visualRules;
+      if (d.categories) categories = d.categories;
+      if (d.people) people = d.people;
+      if (d.cfg) cfg = d.cfg;
+      if (d.legendItems) legendItems = d.legendItems;
+      if (d.userTabs) userTabs = d.userTabs;
+      if (d.USERS) USERS = d.USERS;
+    }
+  } catch(e) { console.warn('Storage load error:', e); }
+}
+
+// Wrap save after every mutating action
+var _origSavePost = savePost;
+savePost = async function() { _origSavePost(); await saveToStorage(); };
+var _origDeletePost = deletePost;
+deletePost = async function() { _origDeletePost(); await saveToStorage(); };
+var _origSaveDl = saveDl;
+saveDl = async function() { _origSaveDl(); await saveToStorage(); };
+var _origDeleteDl = deleteDl;
+deleteDl = async function() { _origDeleteDl(); await saveToStorage(); };
+var _origSaveIdea = saveIdea;
+saveIdea = async function() { _origSaveIdea(); await saveToStorage(); };
+var _origDeleteIdea = deleteIdea;
+deleteIdea = async function(id) { _origDeleteIdea(id); await saveToStorage(); };
+var _origPromoteIdea = promoteIdea;
+promoteIdea = async function(id) { _origPromoteIdea(id); await saveToStorage(); };
+var _origSaveLink = saveLink;
+saveLink = async function() { _origSaveLink(); await saveToStorage(); };
+var _origDeleteLink = deleteLink;
+deleteLink = async function() { _origDeleteLink(); await saveToStorage(); };
+
 // ══ INIT ══
-function appInit() {
+async function appInit() {
+  // Show loading
+  var board = gid('board');
+  if (board) board.innerHTML = '<div style="padding:30px;color:var(--muted);font-size:13px">Carregant dades...</div>';
+
+  await loadFromStorage();
+
   renderPipeline();
   renderCal();
   renderDeadlines();
