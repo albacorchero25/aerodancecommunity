@@ -545,6 +545,7 @@ function doChangePwd() {
   if (nw !== conf) { stxt('cpwd-err', 'Les contrasenyes no coincideixen'); return; }
   USERS[currentUser] = nw;
   closeModal('chpwd-modal');
+  saveToStorage();
   showToast('✓ Contrasenya canviada');
 }
 
@@ -1564,21 +1565,35 @@ function updateStats() {
   var urgEl = gid('sv-urgent'); if (urgEl) urgEl.textContent = deadlines.filter(function(d) { var x = daysUntil(d.date); return x >= 0 && x <= 30; }).length;
 }
 
-// ══ PERSISTENT STORAGE ══
-var STORAGE_KEY = 'aerodance-hub-v1';
+// ══ SUPABASE PERSISTENT STORAGE ══
+var SB_URL = 'https://qllsrgjobusuhpcvwbcr.supabase.co/rest/v1/hub_data';
+var SB_KEY = 'sb_publishable_tw999dsVyoLilBuPqShpxw_-9lsB9Un';
+var SB_HEADERS = {
+  'Content-Type': 'application/json',
+  'apikey': SB_KEY,
+  'Authorization': 'Bearer ' + SB_KEY,
+  'Prefer': 'resolution=merge-duplicates'
+};
 
 async function saveToStorage() {
   try {
     var data = JSON.stringify({ posts, ideas, deadlines, editorialLinks, hashtags, networks, formats, pillars, tones, visualRules, categories, people, cfg, legendItems, userTabs, USERS });
-    await window.storage.set(STORAGE_KEY, data, true);
-  } catch(e) { console.warn('Storage save error:', e); }
+    await fetch(SB_URL, {
+      method: 'POST',
+      headers: SB_HEADERS,
+      body: JSON.stringify({ key: 'main', value: data, updated_at: new Date().toISOString() })
+    });
+  } catch(e) { console.warn('Supabase save error:', e); showToast('⚠️ Error guardant dades'); }
 }
 
 async function loadFromStorage() {
   try {
-    var result = await window.storage.get(STORAGE_KEY, true);
-    if (result && result.value) {
-      var d = JSON.parse(result.value);
+    var res = await fetch(SB_URL + '?key=eq.main&select=value', {
+      headers: { 'apikey': SB_KEY, 'Authorization': 'Bearer ' + SB_KEY }
+    });
+    var rows = await res.json();
+    if (rows && rows.length && rows[0].value && rows[0].value !== '{}') {
+      var d = JSON.parse(rows[0].value);
       if (d.posts) posts = d.posts;
       if (d.ideas) ideas = d.ideas;
       if (d.deadlines) deadlines = d.deadlines;
@@ -1596,32 +1611,11 @@ async function loadFromStorage() {
       if (d.userTabs) userTabs = d.userTabs;
       if (d.USERS) USERS = d.USERS;
     }
-  } catch(e) { console.warn('Storage load error:', e); }
+  } catch(e) { console.warn('Supabase load error:', e); }
 }
-
-// Wrap save after every mutating action
-var _origSavePost = savePost;
-savePost = async function() { _origSavePost(); await saveToStorage(); };
-var _origDeletePost = deletePost;
-deletePost = async function() { _origDeletePost(); await saveToStorage(); };
-var _origSaveDl = saveDl;
-saveDl = async function() { _origSaveDl(); await saveToStorage(); };
-var _origDeleteDl = deleteDl;
-deleteDl = async function() { _origDeleteDl(); await saveToStorage(); };
-var _origSaveIdea = saveIdea;
-saveIdea = async function() { _origSaveIdea(); await saveToStorage(); };
-var _origDeleteIdea = deleteIdea;
-deleteIdea = async function(id) { _origDeleteIdea(id); await saveToStorage(); };
-var _origPromoteIdea = promoteIdea;
-promoteIdea = async function(id) { _origPromoteIdea(id); await saveToStorage(); };
-var _origSaveLink = saveLink;
-saveLink = async function() { _origSaveLink(); await saveToStorage(); };
-var _origDeleteLink = deleteLink;
-deleteLink = async function() { _origDeleteLink(); await saveToStorage(); };
 
 // ══ INIT ══
 async function appInit() {
-  // Show loading
   var board = gid('board');
   if (board) board.innerHTML = '<div style="padding:30px;color:var(--muted);font-size:13px">Carregant dades...</div>';
 
