@@ -793,12 +793,14 @@ function savePost() {
   } else {
     data.id = Date.now(); posts.push(data);
   }
-  closeModal('post-modal'); renderPipeline(); renderCal(); showToast('✓ Post guardat');
+  closeModal('post-modal'); renderPipeline(); renderCal();
+  saveToStorage(); showToast('✓ Post guardat');
 }
 function deletePost() {
   if (!editPostId) return;
   posts = posts.filter(function(p) { return p.id !== editPostId; });
-  closeModal('post-modal'); renderPipeline(); renderCal(); showToast('Post eliminat');
+  closeModal('post-modal'); renderPipeline(); renderCal();
+  saveToStorage(); showToast('Post eliminat');
 }
 
 // ══ CALENDAR ══
@@ -974,12 +976,14 @@ function saveDl() {
   } else {
     data.id = Date.now(); deadlines.push(data);
   }
-  closeModal('dl-modal'); renderDeadlines(); renderCal(); updateStats(); showToast('✓ Data guardada');
+  closeModal('dl-modal'); renderDeadlines(); renderCal(); updateStats();
+  saveToStorage(); showToast('✓ Data guardada');
 }
 function deleteDl() {
   if (!editDlId) return;
   deadlines = deadlines.filter(function(d) { return d.id !== editDlId; });
-  closeModal('dl-modal'); renderDeadlines(); renderCal(); updateStats(); showToast('Eliminada');
+  closeModal('dl-modal'); renderDeadlines(); renderCal(); updateStats();
+  saveToStorage(); showToast('Eliminada');
 }
 
 function renderDeadlines() {
@@ -1059,15 +1063,20 @@ function saveIdea() {
   var text = gval('idea-text').trim();
   if (!text) { showToast('⚠️ Afegeix una idea'); return; }
   ideas.push({ id: Date.now(), text: text, net: gval('idea-net'), fmt: gval('idea-fmt') });
-  closeModal('idea-modal'); renderIdeas(); updateStats(); showToast('💡 Idea guardada');
+  closeModal('idea-modal'); renderIdeas(); updateStats();
+  saveToStorage(); showToast('💡 Idea guardada');
 }
 function promoteIdea(id) {
   var idea = ideas.find(function(i) { return i.id === id; }); if (!idea) return;
   openPostModal(null, 'Esborrany');
   sval('e-title', idea.text); sval('e-fmt', idea.fmt); sval('e-net', idea.net);
-  ideas = ideas.filter(function(i) { return i.id !== id; }); renderIdeas(); showToast('🚀 Idea promoguda');
+  ideas = ideas.filter(function(i) { return i.id !== id; }); renderIdeas();
+  saveToStorage(); showToast('🚀 Idea promoguda');
 }
-function deleteIdea(id) { ideas = ideas.filter(function(i) { return i.id !== id; }); renderIdeas(); updateStats(); }
+function deleteIdea(id) {
+  ideas = ideas.filter(function(i) { return i.id !== id; }); renderIdeas(); updateStats();
+  saveToStorage();
+}
 
 // ══ EDITORIAL ══
 function renderEditorial() {
@@ -1121,12 +1130,14 @@ function saveLink() {
     var i = editorialLinks.findIndex(function(l) { return l.id === editLinkIdLocal; });
     if (i >= 0) Object.assign(editorialLinks[i], data);
   } else { data.id = Date.now(); editorialLinks.push(data); }
-  closeModal('link-modal'); renderEditorial(); showToast('✓ Guardat');
+  closeModal('link-modal'); renderEditorial();
+  saveToStorage(); showToast('✓ Guardat');
 }
 function deleteLink() {
   if (!editLinkIdLocal) return;
   editorialLinks = editorialLinks.filter(function(l) { return l.id !== editLinkIdLocal; });
-  closeModal('link-modal'); renderEditorial(); showToast('Eliminat');
+  closeModal('link-modal'); renderEditorial();
+  saveToStorage(); showToast('Eliminat');
 }
 
 // ══ SETTINGS ══
