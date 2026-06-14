@@ -699,8 +699,19 @@ var DEFAULTS={
   users:{admin:{pass:'aerodance31m',name:'Administrador'},aerodance:{pass:'ADC2027!',name:'Alba'}},
   userSections:{},
   categories:[
-    {id:1,name:'Carnaval Ajuntament',color:'#5aa8d4'},{id:2,name:'Comparsa intern',color:'#e05252'},
-    {id:3,name:'Dia important',color:'#d4a044'},{id:4,name:'Xarxes socials',color:'#52c97a'},
+    {id:1,name:'Carnaval Ajuntament',color:'#5aa8d4',extraFields:[
+      {id:'lloc',name:'Lloc',type:'text',placeholder:'Teatre Metropol, Rambla...'},
+      {id:'hora',name:'Hora',type:'text',placeholder:'20:00h'},
+    ]},{id:2,name:'Comparsa intern',color:'#e05252',extraFields:[
+      {id:'resp',name:'Responsable',type:'people'},
+      {id:'lloc',name:'Lloc',type:'text',placeholder:'Local d\'assaig...'},
+    ]},
+    {id:3,name:'Dia important',color:'#d4a044',extraFields:[
+      {id:'motiu',name:'Motiu',type:'text',placeholder:'Descripció del dia...'},
+    ]},{id:4,name:'Xarxes socials',color:'#52c97a',extraFields:[
+      {id:'fmt',name:'Format',type:'select',options:['Reel / Vídeo','Carrusel','Foto','Story']},
+      {id:'net',name:'Xarxa',type:'select',options:['Instagram','TikTok','Facebook']},
+    ]},
     {id:5,name:'Inici campanya',color:'#a78bfa'},{id:6,name:'Estratègia',color:'#f0b844'},
     {id:7,name:'Compres',color:'#ff7aaa'},{id:8,name:'Esdeveniments',color:'#00c8d4'},
   ],
@@ -742,7 +753,7 @@ var DEFAULTS={
     ]},
     {id:'s_editorial',type:'document',name:'Línia Editorial',desc:'Estratègia de contingut, identitat visual i recursos.',fields:[],blocks:[
       {id:1,type:'links',content:[{id:1,name:'Dossier Carnaval 2027',url:'https://drive.google.com',icon:'📁',ltype:'drive'},{id:2,name:'Compte Instagram @adcgroupcarnaval',url:'https://instagram.com',icon:'📸',ltype:'instagram'}]},
-      {id:2,type:'pillarstats',protected:false},
+      
       {id:3,type:'text',label:'Identitat visual',content:'Paleta: Negre, daurat, blau elèctric, tons joia (bordeus, verds foscos).\nTipografia: Serif dramàtic o display amb caràcter per als títols.\nFotografia: Edició fosca amb alt contrast. Fons neutre per als retrats.\nFormats: 9:16 per Stories i Reels. 4:5 o quadrat per al Feed.\nCaption: Frase impactant · Context · CTA · Hashtags al final.'},
       {id:4,type:'song',label:'Cançó',title:'Koze — Music Is Okay',author:'DJ Koze',bgImage:'',protected:false},
     ]},
@@ -1378,25 +1389,37 @@ window.pickCalCat=function(el,catId){
   el.classList.add('sel');
   var fields=G('cal-add-fields');
   if(fields)fields.classList.add('visible');
-  // Show extra fields based on category
   var extra=G('cal-extra-fields');if(!extra)return;
   var cat=D.categories.find(function(c){return c.id===catId;});
-  if(!cat){extra.innerHTML='';return;}
-  var name=cat.name;
-  if(name==='Xarxes socials'){
-    extra.innerHTML='<div class="field"><div class="flbl">Format</div>'+
-      '<select id="cal-fmt" class="finp"><option>Reel / Vídeo</option><option>Carrusel</option><option>Foto</option><option>Story</option></select></div>'+
-      '<div class="field"><div class="flbl">Xarxa</div>'+
-      '<select id="cal-net" class="finp"><option>Instagram</option><option>TikTok</option><option>Facebook</option></select></div>';
-  } else if(name==='Carnaval Ajuntament'){
-    extra.innerHTML='<div class="field"><div class="flbl">Lloc</div><input type="text" id="cal-lloc" class="finp" placeholder="Teatre Metropol, Rambla..."></div>';
-  } else if(name==='Comparsa intern'){
-    extra.innerHTML='<div class="field"><div class="flbl">Responsable</div><div class="pchecks" id="cal-resp">'+
-      (D.people||[]).map(function(p){return '<div class="pcheck" style="border-color:'+p.color+'" onclick="this.classList.toggle(\'on\')"><div class="pcheck-dot" style="background:'+p.color+'"></div>'+esc(p.name)+'</div>';}).join('')+
-      '</div></div>';
-  } else {
-    extra.innerHTML='';
-  }
+  if(!cat||!(cat.extraFields&&cat.extraFields.length)){extra.innerHTML='';return;}
+  // Render extra fields dynamically from cat.extraFields
+  extra.innerHTML='';
+  cat.extraFields.forEach(function(f){
+    var fd=document.createElement('div');fd.className='field';
+    var lbl=document.createElement('div');lbl.className='flbl';lbl.textContent=f.name;
+    fd.appendChild(lbl);
+    if(f.type==='select'){
+      var sel=document.createElement('select');sel.className='finp';sel.id='cal-ef-'+f.id;
+      (f.options||[]).forEach(function(o){var op=document.createElement('option');op.value=o;op.textContent=o;sel.appendChild(op);});
+      fd.appendChild(sel);
+    } else if(f.type==='people'){
+      var pw=document.createElement('div');pw.className='pchecks';pw.id='cal-ef-'+f.id;
+      (D.people||[]).forEach(function(p){
+        var ch=document.createElement('div');ch.className='pcheck';
+        ch.style.borderColor=p.color;
+        ch.setAttribute('onclick','this.classList.toggle(\'on\')');
+        var dot=document.createElement('div');dot.className='pcheck-dot';dot.style.background=p.color;
+        ch.appendChild(dot);ch.appendChild(document.createTextNode(p.name));
+        pw.appendChild(ch);
+      });
+      fd.appendChild(pw);
+    } else {
+      var inp=document.createElement('input');inp.className='finp';inp.type='text';
+      inp.id='cal-ef-'+f.id;inp.placeholder=f.placeholder||'';
+      fd.appendChild(inp);
+    }
+    extra.appendChild(fd);
+  });
 };
 
 // ══ DEADLINES ══
@@ -1525,24 +1548,11 @@ function renderDocBlock(wrap,b,sec){
       });
     }
   } else if(b.type==='pillarstats'){
-    var pl=D.sections.find(function(s){return s.type==='pipeline';});
-    var recs=pl?pl.records||[]:[];
-    var total=recs.length||1;
-    var lbl=mk('div','ed-sub-h');lbl.textContent='Distribució per pilars';wrap.appendChild(lbl);
-    var row=mk('div','pillar-stat-row');
-    PILLARS.forEach(function(p){
-      var count=recs.filter(function(r){return r.pillar===p.name;}).length;
-      var pct=Math.round(count/total*100);
-      var card=mk('div','pillar-stat');
-      var nm=mk('div','pillar-stat-name '+p.cls);nm.textContent=p.name;
-      var cn=mk('div','pillar-stat-count');cn.textContent=count;
-      var bar=mk('div','pillar-stat-bar');
-      var fill=mk('div','pillar-stat-fill');fill.style.width=pct+'%';fill.style.background=p.color;
-      bar.appendChild(fill);
-      card.appendChild(nm);card.appendChild(cn);card.appendChild(bar);
-      row.appendChild(card);
-    });
-    wrap.appendChild(row);
+    // eliminat — pilars de contingut retirats
+    return;
+  } else if(b.type==='text'&&(b.label==='Música de referència'||b.label==='Musica de referencia')){
+    // eliminat — secció de música retirada
+    return;
   } else if(b.type==='text'){
     if(b.label){var lbl=mk('div','ed-sub-h');lbl.textContent=b.label;wrap.appendChild(lbl);}
     var tb=mk('div','ed-text-block'+(b.protected?' protected':''));
@@ -1965,18 +1975,6 @@ window.delLegExtra=async function(id){
   D.legendExtra=(D.legendExtra||[]).filter(function(l){return l.id!==id;});
   await saveMain();editLegend();toast('✓ Eliminat');
 };
-window.addCat=function(){
-  genModal('Nova categoria',
-    '<div class="field"><div class="flbl">Nom</div><input type="text" id="nc-n" class="finp"></div>'+
-    '<div class="field"><div class="flbl">Color</div><input type="color" id="nc-c" class="finp finp-color" value="#00c8d4"></div>',
-    async function(){
-      var n=gv('nc-n').trim();if(!n)return;saveUndo();
-      if(!D.categories)D.categories=[];
-      D.categories.push({id:Date.now(),name:n,color:gv('nc-c')});
-      cm('gen-modal');await saveMain();editLegend();toast('✓ Categoria afegida');
-    }
-  );
-};
 window.addLegExtra=function(){
   genModal('Nou element de llegenda',
     '<div class="field"><div class="flbl">Etiqueta</div><input type="text" id="nl-l" class="finp"></div>'+
@@ -2138,29 +2136,120 @@ function renderSetPeople(sb){
 
 function renderSetCats(sb){
   function buildCatList(){
-    sb.innerHTML='<div class="s-sec"><div class="s-h">Categories del calendari</div><div id="cats-list"></div>'+
+    sb.innerHTML='<div class="s-sec"><div class="s-h">Categories del calendari</div>'+
+      '<div class="isub" style="margin-bottom:10px;font-size:11px">Cada categoria pot tenir camps extra que apareixeran al crear un event d\'aquell tipus.</div>'+
+      '<div id="cats-list"></div>'+
       '<button class="btn btn-sm" id="add-cat-btn" style="margin-top:8px">+ Afegir categoria</button></div>';
     var cl=G('cats-list');
     (D.categories||[]).forEach(function(c,i){
-      var row=mk('div','irow');
-      var sw=mk('div','csw');sw.style.cssText='width:16px;height:16px;background:'+c.color+';border-radius:4px;flex-shrink:0';
-      var im=mk('div','im');im.innerHTML='<div class="iname">'+esc(c.name)+'</div>';
+      var row=mk('div','irow');row.style.alignItems='flex-start';row.style.flexWrap='wrap';row.style.gap='6px';row.style.paddingBottom='10px';row.style.borderBottom='1px solid var(--border)';row.style.marginBottom='8px';
+      var sw=mk('div','csw');sw.style.cssText='width:14px;height:14px;background:'+c.color+';border-radius:3px;flex-shrink:0;margin-top:3px';
+      var im=mk('div','im');im.style.flex='1';
+      im.innerHTML='<div class="iname">'+esc(c.name)+'</div>';
+      // Show extraFields summary
+      if(c.extraFields&&c.extraFields.length){
+        var fsum=mk('div','isub');fsum.style.marginTop='3px';
+        fsum.textContent='Camps: '+c.extraFields.map(function(f){return f.name;}).join(', ');
+        im.appendChild(fsum);
+      }
+      var btns=mk('div','');btns.style.cssText='display:flex;gap:4px;flex-shrink:0';
+      var fb=mk('button','btn btn-xs');fb.textContent='⚙ Camps';
       var eb=mk('button','btn btn-xs');eb.textContent='✏️';
       var db=mk('button','btn btn-xs btn-d');db.textContent='×';
+      // Edit category name/color
       eb.addEventListener('click',function(){
-        genModal('Editar categoria',
+        genModal('Editar categoria "'+esc(c.name)+'"',
           '<div class="field"><div class="flbl">Nom</div><input type="text" id="ec-n" class="finp" value="'+eq(c.name)+'"></div>'+
           '<div class="field"><div class="flbl">Color</div><input type="color" id="ec-c" class="finp finp-color" value="'+c.color+'"></div>',
           async function(){saveUndo();c.name=gv('ec-n')||c.name;c.color=gv('ec-c');cm('gen-modal');await saveMain();buildCatList();toast('✓ Guardat');}
         );
       });
+      // Manage extra fields for this category
+      fb.addEventListener('click',function(){openCatFieldsMgr(c,buildCatList);});
       db.addEventListener('click',async function(){if(!confirm('Eliminar?'))return;saveUndo();D.categories.splice(i,1);await saveMain();buildCatList();toast('✓ Eliminat');});
-      row.appendChild(sw);row.appendChild(im);row.appendChild(eb);row.appendChild(db);cl.appendChild(row);
+      btns.appendChild(fb);btns.appendChild(eb);btns.appendChild(db);
+      row.appendChild(sw);row.appendChild(im);row.appendChild(btns);cl.appendChild(row);
     });
-    G('add-cat-btn').addEventListener('click',function(){window.addCat();});
+    G('add-cat-btn').addEventListener('click',function(){window.addCat(buildCatList);});
   }
   buildCatList();
 }
+
+// Manager de camps extra per categoria de calendari
+function openCatFieldsMgr(cat,onClose){
+  if(!cat.extraFields)cat.extraFields=[];
+  function buildBody(){
+    var b=G('gen-body');if(!b)return;
+    b.innerHTML='<div class="isub" style="margin-bottom:10px;font-size:11px">Camps que apareixeran en crear un event de la categoria "'+esc(cat.name)+'".</div>';
+    if(!cat.extraFields.length){
+      var em=mk('div','');em.style.cssText='color:var(--muted);font-size:12px;margin-bottom:8px';em.textContent='Sense camps addicionals.';b.appendChild(em);
+    }
+    cat.extraFields.forEach(function(f,i){
+      var row=mk('div','fb-row');
+      row.innerHTML='<span style="font-size:12px;color:var(--text);flex:1">'+esc(f.name)+'</span>'+
+        '<span class="fb-badge">'+esc(f.type)+'</span>';
+      var eb2=mk('button','btn btn-xs');eb2.textContent='✏️';
+      var db2=mk('button','btn btn-xs btn-d');db2.textContent='×';
+      eb2.addEventListener('click',function(){openCatFieldEdit(f,cat,function(){openCatFieldsMgr(cat,onClose);});});
+      db2.addEventListener('click',async function(){
+        saveUndo();cat.extraFields.splice(i,1);await saveMain();openCatFieldsMgr(cat,onClose);toast('✓ Eliminat');
+      });
+      row.appendChild(eb2);row.appendChild(db2);b.appendChild(row);
+    });
+    var ab=mk('button','btn btn-sm');ab.textContent='+ Nou camp';ab.style.marginTop='10px';
+    ab.addEventListener('click',function(){openCatFieldNew(cat,function(){openCatFieldsMgr(cat,onClose);});});
+    b.appendChild(ab);
+    var ft=G('gen-foot');
+    if(ft)ft.innerHTML='<div style="flex:1"></div><button class="btn btn-sm" onclick="cm(\'gen-modal\');'+( onClose?'':'')+'" id="catf-close-btn">Tancar</button>';
+    var cb2=G('catf-close-btn');
+    if(cb2)cb2.addEventListener('click',function(){cm('gen-modal');if(onClose)onClose();});
+  }
+  genModal('Camps de "'+esc(cat.name)+'"','',null,null);
+  setTimeout(buildBody,10);
+}
+function openCatFieldEdit(f,cat,cb){
+  var hasOpts=f.type==='select';
+  genModal('Editar camp "'+esc(f.name)+'"',
+    '<div class="field"><div class="flbl">Nom</div><input type="text" id="cfm-name" class="finp" value="'+eq(f.name)+'"></div>'+
+    '<div class="field"><div class="flbl">Placeholder / Ajuda</div><input type="text" id="cfm-ph" class="finp" value="'+eq(f.placeholder||'')+'"></div>'+
+    (hasOpts?'<div class="field"><div class="flbl">Opcions (una per línia)</div><textarea id="cfm-opts" class="finp finp-ta" style="height:80px">'+esc((f.options||[]).join('\n'))+'</textarea></div>':''),
+    async function(){
+      saveUndo();f.name=gv('cfm-name')||f.name;f.placeholder=gv('cfm-ph')||'';
+      if(hasOpts)f.options=(gv('cfm-opts')||'').split('\n').map(function(s){return s.trim();}).filter(Boolean);
+      cm('gen-modal');await saveMain();if(cb)cb();toast('✓ Actualitzat');
+    }
+  );
+}
+function openCatFieldNew(cat,cb){
+  genModal('Nou camp per "'+esc(cat.name)+'"',
+    '<div class="field"><div class="flbl">Nom del camp</div><input type="text" id="cfn-name" class="finp" placeholder="Ex: Lloc, Format, Notes..."></div>'+
+    '<div class="field"><div class="flbl">Tipus</div><select id="cfn-type" class="finp" onchange="G(\'cfn-opts-w\').style.display=this.value===\'select\'?\'block\':\'none\'">'+
+    '<option value="text">Text lliure</option><option value="select">Selecció</option><option value="people">Persones</option></select></div>'+
+    '<div id="cfn-opts-w" style="display:none"><div class="field"><div class="flbl">Opcions (una per línia)</div><textarea id="cfn-opts" class="finp finp-ta" style="height:80px"></textarea></div></div>'+
+    '<div class="field"><div class="flbl">Placeholder / Ajuda (opcional)</div><input type="text" id="cfn-ph" class="finp"></div>',
+    async function(){
+      var n=gv('cfn-name').trim();if(!n)return;
+      saveUndo();if(!cat.extraFields)cat.extraFields=[];
+      var t=gv('cfn-type');
+      var f={id:'ef_'+Date.now(),name:n,type:t,placeholder:gv('cfn-ph')||''};
+      if(t==='select')f.options=(gv('cfn-opts')||'').split('\n').map(function(s){return s.trim();}).filter(Boolean);
+      cat.extraFields.push(f);
+      cm('gen-modal');await saveMain();if(cb)cb();toast('✓ Camp afegit');
+    }
+  );
+}
+window.addCat=function(onDone){
+  genModal('Nova categoria',
+    '<div class="field"><div class="flbl">Nom</div><input type="text" id="nc-n" class="finp"></div>'+
+    '<div class="field"><div class="flbl">Color</div><input type="color" id="nc-c" class="finp finp-color" value="#00c8d4"></div>',
+    async function(){
+      var n=gv('nc-n').trim();if(!n)return;saveUndo();
+      if(!D.categories)D.categories=[];
+      D.categories.push({id:Date.now(),name:n,color:gv('nc-c'),extraFields:[]});
+      cm('gen-modal');await saveMain();if(onDone)onDone();else renderSettings();toast('✓ Categoria afegida');
+    }
+  );
+};
 
 function renderSetHashtags(sb){
   sb.innerHTML='<div class="s-sec"><div class="s-h">Hashtags</div>'+
