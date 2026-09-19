@@ -9,9 +9,9 @@
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 <meta name="apple-mobile-web-app-title" content="Aerodance">
 <link rel="manifest" id="pwa-manifest" href="manifest.webmanifest">
+<link rel="apple-touch-icon" href="apple-touch-icon.png">
+<link rel="icon" type="image/png" sizes="32x32" href="favicon-32.png">
 <title>AERODANCE</title>
-<!-- OneSignal Web Push SDK -->
-<script src="https://cdn.onesignal.com/sdks/web/v16/OneSignalSDK.page.js" defer></script>
 <style>
 *{box-sizing:border-box;margin:0;padding:0}
 :root{
@@ -75,7 +75,7 @@ body.edit-mode .sec-dots-btn{display:flex!important}
 #app.visible{display:flex}
 
 /* TOPBAR */
-.topbar{position:fixed;top:0;left:0;right:0;z-index:200;height:52px;display:flex;align-items:center;padding:0 20px;gap:8px;transition:background .4s,border-color .4s}
+.topbar{position:fixed;top:0;left:0;right:0;z-index:200;height:calc(52px + env(safe-area-inset-top));padding:env(safe-area-inset-top) 20px 0;box-sizing:border-box;display:flex;align-items:center;gap:8px;transition:background .4s,border-color .4s}
 .topbar.scrolled{background:rgba(2,4,6,.94);backdrop-filter:blur(16px);border-bottom:1px solid var(--border)}
 .top-logo{display:flex;align-items:center;gap:8px;flex-shrink:0;cursor:pointer}
 .top-logo-img{max-height:28px;max-width:110px;object-fit:contain}
@@ -278,9 +278,10 @@ body.edit-mode #phase-bar{top:52px}
 .trash-it{display:flex;align-items:center;gap:10px;background:var(--bg2);border:1px solid var(--border);border-radius:var(--r);padding:10px 13px;margin-bottom:5px}
 
 /* MODALS */
-.modal-overlay{position:fixed;inset:0;background:rgba(0,0,0,.88);z-index:600;display:none;align-items:center;justify-content:center;padding:16px;backdrop-filter:blur(5px)}
-.modal-overlay.open{display:flex}
-.modal{background:var(--bg2);border:1px solid var(--border2);border-radius:var(--r2);width:100%;max-width:560px;max-height:90vh;overflow-y:auto;display:flex;flex-direction:column}
+.modal-overlay{position:fixed;inset:0;background:rgba(0,0,0,.88);z-index:600;display:flex;align-items:center;justify-content:center;padding:16px;backdrop-filter:blur(5px);opacity:0;pointer-events:none;transition:opacity .22s ease}
+.modal-overlay.open{opacity:1;pointer-events:auto}
+.modal{background:var(--bg2);border:1px solid var(--border2);border-radius:var(--r2);width:100%;max-width:560px;max-height:90vh;overflow-y:auto;display:flex;flex-direction:column;transform:translateY(16px) scale(.97);transition:transform .28s cubic-bezier(.16,1,.3,1)}
+.modal-overlay.open .modal{transform:translateY(0) scale(1)}
 .modal-sm{max-width:400px}
 .modal-lg{max-width:760px}
 .mhd{padding:15px 20px 12px;border-bottom:1px solid var(--border);display:flex;align-items:center;justify-content:space-between;position:sticky;top:0;background:var(--bg2);z-index:1}
@@ -305,7 +306,7 @@ select.finp option{background:var(--bg4)}
 .pcheck-dot{width:6px;height:6px;border-radius:50%;flex-shrink:0}
 
 /* SETTINGS DRAWER — slim, right, does NOT open automatically */
-#settings-panel{position:fixed;top:96px;right:0;bottom:0;z-index:300;width:min(340px,92vw);background:var(--bg2);border-left:1px solid var(--border2);display:none;flex-direction:column;box-shadow:-8px 0 32px rgba(0,0,0,.5);transition:transform .3s ease}
+#settings-panel{position:fixed;top:60px;right:0;bottom:0;z-index:300;width:min(340px,92vw);background:var(--bg2);border-left:1px solid var(--border2);display:none;flex-direction:column;box-shadow:-8px 0 32px rgba(0,0,0,.5);transition:transform .3s ease}
 #settings-panel.open{display:flex}
 /* Settings toggle button — always in top-left when edit mode is on */
 #settings-toggle-btn{position:fixed;top:96px;left:0;z-index:310;background:var(--bg2);border:1px solid var(--border2);border-left:none;border-radius:0 var(--r) var(--r) 0;color:var(--cyan);font-size:11px;letter-spacing:.1em;padding:8px 12px;cursor:pointer;transition:all .2s;display:none;align-items:center;gap:5px;font-family:var(--font-sans);text-transform:uppercase}
@@ -409,10 +410,7 @@ body.edit-mode #settings-toggle-btn{display:flex}
 .bn-item.active .bn-icon{transform:scale(1.12)}
 
 /* Notification bell button */
-.notif-btn{position:relative;width:34px;height:34px;border-radius:50%;background:rgba(0,200,212,.08);border:1px solid var(--border2);color:var(--cyan);font-size:15px;display:flex;align-items:center;justify-content:center;cursor:pointer;transition:all .2s;flex-shrink:0}
-.notif-btn:hover{background:rgba(0,200,212,.18)}
-.notif-btn .notif-dot{position:absolute;top:3px;right:3px;width:6px;height:6px;border-radius:50%;background:var(--red);display:none}
-.notif-btn.has-key .notif-dot{display:block}
+
 
 /* Pipeline / Taller stage tabs (mobile-first kanban) */
 .stage-tabs{display:none;gap:6px;overflow-x:auto;padding-bottom:12px;scrollbar-width:none}
@@ -454,33 +452,32 @@ body.edit-mode #settings-toggle-btn{display:flex}
 /* ═══ HOME VIEW (mobile launcher screen) ═══ */
 #home-view{display:none;padding:18px 18px 100px}
 .home-greet-lbl{font-size:9px;letter-spacing:.24em;text-transform:uppercase;color:var(--muted);margin-bottom:5px}
-.home-greet-name{font-family:var(--font-title);font-size:27px;color:#fff;letter-spacing:.03em;margin-bottom:22px}
-.home-tiles{display:grid;grid-template-columns:repeat(3,1fr);gap:11px}
-.home-tile{display:flex;flex-direction:column;align-items:center;justify-content:center;gap:9px;background:var(--bg2);border:1px solid var(--border);border-radius:18px;padding:18px 6px;color:var(--text);cursor:pointer;transition:all .2s}
-.home-tile:active{border-color:var(--border2);background:var(--bg3)}
-.home-tile svg{color:var(--cyan)}
-.home-tile span{font-size:9px;letter-spacing:.04em;text-align:center;text-transform:uppercase;color:var(--muted);line-height:1.3}
+.home-greet-name{font-family:var(--font-title);font-size:30px;color:#fff;letter-spacing:.03em;margin-bottom:24px}
+.home-tiles{display:grid;grid-template-columns:repeat(3,1fr);gap:12px}
+.home-tile{display:flex;flex-direction:column;align-items:center;justify-content:center;gap:10px;background:var(--bg2);border:1px solid var(--border);border-radius:18px;padding:22px 6px;color:var(--text);cursor:pointer;transition:transform .15s ease,border-color .2s,background .2s}
+.home-tile:active{transform:scale(.94);border-color:var(--border2);background:var(--bg3)}
+.home-tile svg{color:var(--cyan);width:32px;height:32px}
+.home-tile span{font-size:10px;letter-spacing:.04em;text-align:center;text-transform:uppercase;color:var(--muted);line-height:1.3}
 
 /* ═══ FLOATING DOCK — icon-only, 5 fixed shortcuts ═══ */
 #bottom-nav{left:14px;right:14px;bottom:calc(12px + env(safe-area-inset-bottom));border-radius:26px;background:rgba(6,12,14,.92);box-shadow:0 -6px 28px rgba(0,200,212,.10),0 0 0 1px var(--border2);padding:8px 6px;border-top:none;justify-content:space-around;align-items:center;backdrop-filter:blur(18px)}
-.bn-item{display:flex;align-items:center;justify-content:center;width:48px;height:48px;border-radius:14px;background:transparent;border:none;color:var(--muted);cursor:pointer;transition:all .2s;flex:0 0 auto}
+.bn-item{display:flex;align-items:center;justify-content:center;width:52px;height:52px;border-radius:15px;background:transparent;border:none;color:var(--muted);cursor:pointer;transition:all .2s;flex:0 0 auto}
 .bn-item.active{color:var(--cyan);background:rgba(0,200,212,.1)}
-.bn-item.bn-home{width:54px;height:54px;border-radius:17px;color:var(--cyan);background:rgba(0,200,212,.06);border:1px solid var(--border2)}
+.bn-item.bn-home{width:58px;height:58px;border-radius:18px;color:var(--cyan);background:rgba(0,200,212,.06);border:1px solid var(--border2)}
 .bn-item.bn-home.active{background:rgba(0,200,212,.18);box-shadow:0 0 16px rgba(0,200,212,.35)}
 
 /* ═══ Mobile breakpoint: transform into app-like layout ═══ */
 @media (max-width:760px){
-  body{font-size:15px}
-  .topbar{padding:0 12px;gap:6px;height:56px}
+  body{font-size:16px}
+  .topbar{padding:env(safe-area-inset-top) 14px 0;gap:6px;height:calc(58px + env(safe-area-inset-top))}
   .top-nav{display:none}
   .top-welcome{display:none}
-  .top-wordmark{font-size:12px}
-  .top-right{gap:4px}
-  .tbtn{padding:7px 9px;font-size:9px}
+  .top-wordmark{font-size:13px}
+  .top-right{gap:5px}
+  .tbtn{padding:8px 10px;font-size:10px}
   #btn-chpwd{display:none}
-  #phase-bar{top:56px;padding:0 12px;height:40px}
-  main#main-scroll{padding-top:100px!important;padding-bottom:84px}
-  body.edit-mode main#main-scroll{padding-bottom:150px}
+  main#main-scroll{padding-top:calc(70px + env(safe-area-inset-top))!important;padding-bottom:100px}
+  body.edit-mode main#main-scroll{padding-bottom:100px}
 
   .hub-sec{padding:40px 0}
   .sec-inner{padding:0 16px}
@@ -505,9 +502,13 @@ body.edit-mode #settings-toggle-btn{display:flex}
   .post-card{padding:14px 15px}
   .add-stage{padding:12px}
 
-  .cal-cell{min-height:52px;padding:4px}
-  .cal-grid{gap:2px}
-  .cal-dn{font-size:7px}
+  .cal-cell{min-height:80px;padding:5px;border-radius:9px}
+  .cal-grid{gap:4px}
+  .cal-dn{font-size:9px;padding:4px 0 8px}
+  .cal-num{font-size:11px}
+  .cal-ev{font-size:10px;padding:3px 5px;border-radius:5px;margin-bottom:3px;font-weight:600}
+  .cal-hd{padding:14px 14px}
+  .cal-lbl{font-size:17px}
 
   .sponsor-grid,.gallery-grid{grid-template-columns:1fr 1fr}
   .theme-node{width:88vw}
@@ -516,6 +517,8 @@ body.edit-mode #settings-toggle-btn{display:flex}
 
   /* Modals become full-screen sheets */
   .modal-overlay{padding:0;align-items:flex-end}
+  .modal,.modal-sm,.modal-lg{transform:translateY(100%)!important}
+  .modal-overlay.open .modal{transform:translateY(0)!important}
   .modal,.modal-sm,.modal-lg{max-width:100%;width:100%;max-height:92vh;border-radius:20px 20px 0 0}
   .mbody{padding:16px}
   .frow{grid-template-columns:1fr}
@@ -568,40 +571,16 @@ body.edit-mode #settings-toggle-btn{display:flex}
       <button class="tbtn tbtn-undo" id="btn-undo">↩</button>
       <span class="top-welcome" id="top-welcome"></span>
       <span class="top-badge" id="top-badge" style="display:none">ADMIN</span>
-      <button class="notif-btn" id="btn-notif" style="display:none" title="Enviar notificació a tothom"><span>🔔</span><span class="notif-dot"></span></button>
       <button class="tbtn" id="btn-chpwd">Contrasenya</button>
       <button class="tbtn" id="btn-settings">⚙ Ajustes</button>
       <button class="tbtn" id="btn-logout">Sortir</button>
     </div>
   </div>
 
-  <!-- PHASE TIMELINE BAR -->
-  <div id="phase-bar"></div>
-
-  <!-- SETTINGS TOGGLE (top-left, only in edit mode) -->
-  <button id="settings-toggle-btn">☰ Configuració</button>
-
-  <main id="main-scroll" style="padding-top:96px"></main>
+  <main id="main-scroll" style="padding-top:60px"></main>
 
   <!-- BOTTOM APP NAV (mobile) -->
   <nav id="bottom-nav"></nav>
-</div>
-
-<!-- SEND NOTIFICATION MODAL -->
-<div class="modal-overlay" id="notif-modal">
-  <div class="modal modal-sm">
-    <div class="mhd"><div class="mtitle">🔔 Notificar a tothom</div><button class="mclose" data-close="notif-modal">×</button></div>
-    <div class="mbody">
-      <div class="field"><div class="flbl">Títol</div><input type="text" id="nf-title" class="finp" placeholder="Aerodance"></div>
-      <div class="field"><div class="flbl">Missatge</div><textarea id="nf-msg" class="finp finp-ta" placeholder="Escriu l'avís que rebran tots els usuaris..."></textarea></div>
-      <div style="font-size:10px;color:var(--muted);line-height:1.5">S'enviarà com a notificació push a tots els usuaris que hagin acceptat notificacions al mòbil, encara que tinguin l'app tancada.</div>
-      <div style="font-size:10px;color:var(--red);min-height:14px" id="nf-err"></div>
-    </div>
-    <div class="mfoot">
-      <button class="btn btn-sm" data-close="notif-modal">Cancel·lar</button>
-      <button class="btn btn-p btn-sm" id="nf-send">Enviar</button>
-    </div>
-  </div>
 </div>
 
 <!-- SETTINGS DRAWER -->
@@ -700,8 +679,41 @@ body.edit-mode #settings-toggle-btn{display:flex}
 var SB='https://qllsrgjobusuhpcvwbcr.supabase.co/rest/v1/hub_data';
 var SK='sb_publishable_tw999dsVyoLilBuPqShpxw_-9lsB9Un';
 var SH={'Content-Type':'application/json','apikey':SK,'Authorization':'Bearer '+SK,'Prefer':'resolution=merge-duplicates'};
-async function dbGet(k){try{var r=await fetch(SB+'?key=eq.'+encodeURIComponent(k)+'&select=value',{headers:{'apikey':SK,'Authorization':'Bearer '+SK}});var rows=await r.json();return rows&&rows.length?JSON.parse(rows[0].value):null;}catch(e){return null;}}
-async function dbSet(k,v){try{await fetch(SB,{method:'POST',headers:SH,body:JSON.stringify({key:k,value:JSON.stringify(v),updated_at:new Date().toISOString()})});}catch(e){toast('⚠️ Error guardant');}}
+var dbOk=true;
+function sleep(ms){return new Promise(function(res){setTimeout(res,ms);});}
+async function dbGet(k){
+  for(var attempt=0;attempt<2;attempt++){
+    try{
+      var r=await fetch(SB+'?key=eq.'+encodeURIComponent(k)+'&select=value',{headers:{'apikey':SK,'Authorization':'Bearer '+SK}});
+      if(!r.ok){dbOk=false;console.error('Supabase GET error',r.status,await r.text());return null;}
+      dbOk=true;
+      var rows=await r.json();
+      return rows&&rows.length?JSON.parse(rows[0].value):null;
+    }catch(e){
+      console.error('Supabase GET failed (intent '+(attempt+1)+')',e);
+      if(attempt===0){await sleep(900);continue;}
+      dbOk=false;return null;
+    }
+  }
+}
+async function dbSet(k,v){
+  for(var attempt=0;attempt<2;attempt++){
+    try{
+      var r=await fetch(SB+'?on_conflict=key',{method:'POST',headers:SH,body:JSON.stringify({key:k,value:JSON.stringify(v),updated_at:new Date().toISOString()})});
+      if(!r.ok){
+        dbOk=false;
+        var errTxt=await r.text();console.error('Supabase SAVE error',r.status,errTxt);
+        toast('⚠️ No s\'ha pogut guardar (revisa la taula/permisos a Supabase)');
+        return false;
+      }
+      dbOk=true;return true;
+    }catch(e){
+      console.error('Supabase SAVE failed (intent '+(attempt+1)+')',e);
+      if(attempt===0){await sleep(900);continue;}
+      dbOk=false;toast('⚠️ Sense connexió — no s\'ha pogut guardar. Revisa la xarxa i torna-ho a provar.');return false;
+    }
+  }
+}
 
 // ══ HELPERS ══
 var toastT=null;
@@ -745,7 +757,7 @@ function toggleSettingsPanel(){
   if(settingsPanelOpen){G('settings-panel').classList.add('open');renderSettings();}
   else G('settings-panel').classList.remove('open');
 }
-G('settings-toggle-btn').addEventListener('click',toggleSettingsPanel);
+// (settings drawer is opened from the Profile menu now)
 G('btn-close-settings').addEventListener('click',function(){G('settings-panel').classList.remove('open');settingsPanelOpen=false;});
 
 // ══ PILARS ══
@@ -885,7 +897,7 @@ var DEFAULTS={
     {id:3,name:'Marta',role:'Coordinació',color:'#a78bfa'},{id:4,name:'Miriam',role:'Coreografia',color:'#f0b844'},
   ],
   hashtags:['#aerodance','#carnaval2027','#carnavaltarragona','#comparsa','#berllinafterdark','#tarragona'],
-  cfg:{countdownLabel:'Berlin After Dark · 2027',countdownDate:'2027-02-14',logoUrl:'',fontTitle:'Georgia,serif',heroSubtitle:'Berlin After Dark',customFontUrl:'',customFontName:'',oneSignalAppId:'',oneSignalApiKey:''},
+  cfg:{countdownLabel:'Berlin After Dark · 2027',countdownDate:'2027-02-14',logoUrl:'',fontTitle:'Georgia,serif',heroSubtitle:'Berlin After Dark',customFontUrl:'',customFontName:''},
   legendExtra:[{id:'p1',label:'Post pendent',color:'#a78bfa'},{id:'p2',label:'Post publicat',color:'#52c97a'}],
   kpiHistory:[],
   phases:JSON.parse(JSON.stringify(DEFAULT_PHASES)),
@@ -943,7 +955,7 @@ var D={};
 // ══ UNDO ══
 var undoSnap=null;
 function saveUndo(){undoSnap=JSON.stringify({sections:D.sections,categories:D.categories,people:D.people,hashtags:D.hashtags,cfg:D.cfg,legendExtra:D.legendExtra,trash:D.trash,userSections:D.userSections,users:D.users,kpiHistory:D.kpiHistory,phases:D.phases,pillars:D.pillars,taskTypes:D.taskTypes,userViewOrder:D.userViewOrder});G('btn-undo').style.display='inline-flex';}
-function doUndo(){if(!undoSnap)return;var s=JSON.parse(undoSnap);Object.assign(D,s);undoSnap=null;G('btn-undo').style.display='none';saveMain();buildPage();buildPhaseBar();toast('↩ Desfet');}
+function doUndo(){if(!undoSnap)return;var s=JSON.parse(undoSnap);Object.assign(D,s);undoSnap=null;G('btn-undo').style.display='none';saveMain();buildPage();toast('↩ Desfet');}
 
 // ══ SAVE / LOAD ══
 async function saveMain(){await dbSet('aero_main2',{sections:D.sections,categories:D.categories,people:D.people,hashtags:D.hashtags,cfg:D.cfg,legendExtra:D.legendExtra,trash:D.trash,userSections:D.userSections,kpiHistory:D.kpiHistory,phases:D.phases,pillars:D.pillars,taskTypes:D.taskTypes,userViewOrder:D.userViewOrder});}
@@ -985,53 +997,12 @@ async function doLogin(){
     var dn=uobj&&uobj.name?uobj.name:u;
     st('top-welcome','Benvinguda, '+dn);
     G('top-badge').style.display=isAdmin()?'inline':'none';
-    st('l-err','');document.body.classList.toggle('is-admin',isAdmin());applyLogo();applyFont();buildPage();buildPhaseBar();updateNotifBtnVisibility();initOneSignal();
+    st('l-err','');document.body.classList.toggle('is-admin',isAdmin());applyLogo();applyFont();buildPage();
+    if(!dbOk)setTimeout(function(){toast('⚠️ No es pot connectar amb la base de dades — els canvis no es guardaran ni es veuran a altres dispositius');},600);
   }else{st('l-err','Usuari o contrasenya incorrectes');setTimeout(function(){st('l-err','');},2500);}
 }
 function doLogout(){currentUser=null;setEditMode(false);document.body.classList.remove('is-admin');G('login-screen').style.display='flex';G('app').classList.remove('visible');}
 function getUserName(u){var uobj=D.users[u];return uobj&&uobj.name?uobj.name:u;}
-
-// ══ NOTIFICATIONS (OneSignal) ══
-var oneSignalReady=false;
-async function initOneSignal(){
-  if(!D.cfg.oneSignalAppId){return;}
-  try{
-    window.OneSignalDeferred=window.OneSignalDeferred||[];
-    OneSignalDeferred.push(async function(OneSignal){
-      if(oneSignalReady)return;
-      await OneSignal.init({appId:D.cfg.oneSignalAppId,allowLocalhostAsSecureOrigin:true});
-      oneSignalReady=true;
-      try{await OneSignal.Notifications.requestPermission();}catch(e){}
-    });
-  }catch(e){}
-}
-function updateNotifBtnVisibility(){
-  var b=G('btn-notif');if(!b)return;
-  b.style.display=isAdmin()?'flex':'none';
-  b.classList.toggle('has-key',!!(D.cfg.oneSignalAppId&&D.cfg.oneSignalApiKey));
-}
-G('btn-notif').addEventListener('click',function(){
-  if(!D.cfg.oneSignalAppId||!D.cfg.oneSignalApiKey){
-    toast('⚠️ Configura OneSignal a Ajustes → General');return;
-  }
-  sv('nf-title','Aerodance');sv('nf-msg','');st('nf-err','');om('notif-modal');
-});
-G('nf-send').addEventListener('click',async function(){
-  var title=gv('nf-title').trim()||'Aerodance';
-  var msg=gv('nf-msg').trim();
-  if(!msg){st('nf-err','Escriu un missatge');return;}
-  st('nf-err','Enviant...');
-  try{
-    var res=await fetch('https://onesignal.com/api/v1/notifications',{
-      method:'POST',
-      headers:{'Content-Type':'application/json; charset=utf-8','Authorization':'Basic '+D.cfg.oneSignalApiKey},
-      body:JSON.stringify({app_id:D.cfg.oneSignalAppId,included_segments:['Subscribed Users'],headings:{en:title,ca:title,es:title},contents:{en:msg,ca:msg,es:msg}})
-    });
-    var j=await res.json();
-    if(res.ok&&!j.errors){cm('notif-modal');toast('✓ Notificació enviada');}
-    else{st('nf-err',(j.errors&&j.errors[0])||'Error enviant la notificació');}
-  }catch(e){st('nf-err','Error de connexió');}
-});
 
 // ══ CUSTOM LINE-ICON SET (no emoji, hand-drawn) ══
 var SVG_ICONS={
@@ -1080,7 +1051,7 @@ function buildDock(){
   dock.innerHTML='';
   var items=[
     {id:'profile',icon:'profile',action:openProfileModal},
-    {id:'bell',icon:'bell',action:openNotifModalForUser},
+    {id:'tasks',icon:'tasks',action:function(){var s=D.sections.find(function(x){return x.type==='tasks';});if(s)setView(s.id);}},
     {id:'home',icon:'home',action:function(){setView('home');}},
     {id:'calendar',icon:'calendar',action:function(){var s=D.sections.find(function(x){return x.type==='calendar';});if(s)setView(s.id);}},
     {id:'editorial',icon:'document',action:function(){var s=D.sections.find(function(x){return x.type==='document';});if(s)setView(s.id);}},
@@ -1088,7 +1059,7 @@ function buildDock(){
   items.forEach(function(it){
     var b=mk('button','bn-item'+(it.id==='home'?' bn-home':''));
     b.dataset.dockId=it.id;
-    b.innerHTML=svgIcon(it.icon,it.id==='home'?24:21);
+    b.innerHTML=svgIcon(it.icon,it.id==='home'?26:23);
     b.addEventListener('click',it.action);
     dock.appendChild(b);
   });
@@ -1098,7 +1069,8 @@ function updateDockActive(){
   document.querySelectorAll('.bn-item').forEach(function(b){b.classList.remove('active');});
   var calSec=D.sections.find(function(x){return x.type==='calendar';});
   var docSec=D.sections.find(function(x){return x.type==='document';});
-  var activeId=currentView==='home'?'home':(calSec&&currentView===calSec.id?'calendar':(docSec&&currentView===docSec.id?'editorial':null));
+  var taskSec=D.sections.find(function(x){return x.type==='tasks';});
+  var activeId=currentView==='home'?'home':(calSec&&currentView===calSec.id?'calendar':(docSec&&currentView===docSec.id?'editorial':(taskSec&&currentView===taskSec.id?'tasks':null)));
   if(activeId){var el=document.querySelector('.bn-item[data-dock-id="'+activeId+'"]');if(el)el.classList.add('active');}
 }
 function setView(viewId){
@@ -1107,19 +1079,32 @@ function setView(viewId){
   updateDockActive();
   window.scrollTo(0,0);
 }
+function fadeShow(el){
+  if(!el)return;
+  el.style.display='block';el.style.opacity='0';el.style.transform='translateY(8px)';
+  el.style.transition='none';
+  requestAnimationFrame(function(){
+    requestAnimationFrame(function(){
+      el.style.transition='opacity .28s ease, transform .28s ease';
+      el.style.opacity='1';el.style.transform='translateY(0)';
+    });
+  });
+}
 function applyMobileView(){
   var hv=G('home-view');
   if(!isMobile()){
-    document.querySelectorAll('.hub-sec').forEach(function(e){e.style.display='';});
-    if(hv)hv.style.display='none';
+    document.querySelectorAll('.hub-sec').forEach(function(e){e.style.display='';e.style.opacity='';e.style.transform='';});
+    if(hv){hv.style.display='none';hv.style.opacity='';hv.style.transform='';}
     return;
   }
   if(currentView==='home'){
-    if(hv)hv.style.display='block';
     document.querySelectorAll('.hub-sec').forEach(function(e){e.style.display='none';});
+    fadeShow(hv);
   }else{
     if(hv)hv.style.display='none';
-    document.querySelectorAll('.hub-sec').forEach(function(e){e.style.display=(e.id==='sec-'+currentView)?'block':'none';});
+    document.querySelectorAll('.hub-sec').forEach(function(e){
+      if(e.id==='sec-'+currentView)fadeShow(e);else e.style.display='none';
+    });
   }
 }
 var _resizeT=null;
@@ -1145,16 +1130,6 @@ function openProfileModal(){
     var lb=G('pm-logout');if(lb)lb.addEventListener('click',function(){cm('gen-modal');doLogout();});
   },10);
 }
-function openNotifModalForUser(){
-  if(isAdmin()&&D.cfg.oneSignalAppId&&D.cfg.oneSignalApiKey){
-    sv('nf-title','Aerodance');sv('nf-msg','');st('nf-err','');om('notif-modal');
-  }else if(D.cfg.oneSignalAppId){
-    try{OneSignalDeferred=OneSignalDeferred||[];OneSignalDeferred.push(async function(OneSignal){await OneSignal.Notifications.requestPermission();});}catch(e){}
-    toast('🔔 T\'hem demanat permís per rebre notificacions');
-  }else{
-    toast(isAdmin()?'⚠️ Configura OneSignal a Ajustes → General':'Les notificacions encara no estan activades');
-  }
-}
 
 // ══ LOGO & FONT ══
 function applyLogo(){
@@ -1178,7 +1153,7 @@ function applyFont(){
 
 // ══ PHASE BAR ══
 function buildPhaseBar(){
-  var bar=G('phase-bar');bar.innerHTML='';
+  var bar=G('phase-bar');if(!bar)return;bar.innerHTML='';
   var phases=D.phases||DEFAULT_PHASES;
   var curMonth=today.getMonth();
   phases.forEach(function(ph,i){
@@ -1508,7 +1483,7 @@ function _renderKanban(el,sec,isTaller){
         if(r.date)chips+='<span class="chip chip-m">📅 '+r.date+'</span>';
         card.innerHTML='<div class="pc-title">'+esc(r.title||r.name||'(sense títol)')+'</div>'+
           '<div class="chips" style="margin-top:5px">'+chips+'</div>';
-        card.addEventListener('click',function(){openRecModal(sec,r,null);});
+        card.addEventListener('click',function(){openDetailModal(sec,r);});
         cards.appendChild(card);
       });
       col.appendChild(cards);
@@ -1657,7 +1632,7 @@ function collectCalEvents(){
   if(dl)(dl.records||[]).forEach(function(r){
     if(!r.date)return;
     var cat=D.categories.find(function(c){return c.name===r.cat;});
-    add(r.date,{title:r.title,color:cat?cat.color:'#d4a044',notes:r.notes,onClick:function(){var dlSec=D.sections.find(function(s){return s.type==='deadlines';});if(dlSec)openRecModal(dlSec,r,null);}});
+    add(r.date,{title:r.title,color:cat?cat.color:'#d4a044',notes:r.notes,onClick:function(){var dlSec=D.sections.find(function(s){return s.type==='deadlines';});if(dlSec)openDetailModal(dlSec,r);}});
   });
 
   var pl=D.sections.find(function(s){return s.type==='pipeline';});
@@ -1665,13 +1640,13 @@ function collectCalEvents(){
     if(!r.date)return;
     var le=D.legendExtra||[];
     var color=r._status==='Publicat'?(le.find(function(l){return l.id==='p2';})||{color:'#52c97a'}).color:(le.find(function(l){return l.id==='p1';})||{color:'#a78bfa'}).color;
-    add(r.date,{title:r.title||(r.net?r.net+': ':'')+r.fmt,color:color,onClick:function(){if(pl)openRecModal(pl,r,null);}});
+    add(r.date,{title:r.title||(r.net?r.net+': ':'')+r.fmt,color:color,onClick:function(){if(pl)openDetailModal(pl,r);}});
   });
 
   var tl=D.sections.find(function(s){return s.type==='taller';});
   if(tl)(tl.records||[]).forEach(function(r){
     if(!r.date)return;
-    add(r.date,{title:'🪡 '+r.title,color:'#ff7aaa',onClick:function(){if(tl)openRecModal(tl,r,null);}});
+    add(r.date,{title:'🪡 '+r.title,color:'#ff7aaa',onClick:function(){if(tl)openDetailModal(tl,r);}});
   });
 
   var ce=D.calEvents||[];
@@ -1792,7 +1767,7 @@ function renderDeadlines(el,sec){
       '<div class="li-sub">'+esc(r.date||'')+(r.cat?' · '+esc(r.cat):'')+(r.priority?' · '+esc(r.priority):'')+(r.notes?'<br>'+esc(r.notes):'')+'</div></div>'+
       '<div class="dl-days" style="color:'+(days<0?'var(--muted)':days<=7?'var(--red)':days<=30?'var(--amber)':'var(--cyan)')+'">'+txt+'</div>'+
       '<span class="dl-badge '+cls+'">'+esc(r.cat||'General')+'</span>';
-    li.addEventListener('click',function(){openRecModal(sec,r,null);});
+    li.addEventListener('click',function(){openDetailModal(sec,r);});
     bw.appendChild(li);
   });
   if(!recs.length){var em=mk('div','');em.style.cssText='color:var(--muted);font-size:13px;padding:20px 0;text-align:center';em.textContent='Cap data clau registrada.';bw.appendChild(em);}
@@ -1840,7 +1815,7 @@ function renderTasks(el,sec){
         (r.managers&&r.managers.length?r.managers.map(function(pid){var p=D.people.find(function(pp){return pp.id===pid;});return p?'<span style="font-size:10px;color:'+p.color+'">'+esc(p.name)+'</span>':''}).join(' '):'')+ 
         (r.notes?'<br><span style="font-size:11px;color:var(--muted)">'+esc(r.notes)+'</span>':'')+'</div></div>';
       li.insertBefore(chk,li.firstChild);
-      li.addEventListener('click',function(){openRecModal(sec,r,null);});
+      li.addEventListener('click',function(){openDetailModal(sec,r);});
       listWrap.appendChild(li);
     });
     if(!recs.length){var em=mk('div','');em.style.cssText='color:var(--muted);font-size:13px;padding:20px 0;text-align:center';em.textContent='Cap tasca '+(_filter!=='all'?'en "'+_filter+'"':'pendent');listWrap.appendChild(em);}
@@ -1905,11 +1880,17 @@ function renderDocBlock(wrap,b,sec){
     if(b.label){var lbl=mk('div','ed-sub-h');lbl.textContent=b.label;wrap.appendChild(lbl);}
     var tb=mk('div','ed-text-block'+(b.protected?' protected':''));
     tb.textContent=b.content||'';
-    if(isAdmin()&&!b.protected){
-      tb.contentEditable='true';
-      tb.addEventListener('blur',async function(){saveUndo();b.content=tb.textContent;await saveMain();toast('✓ Guardat');});
-    }
     wrap.appendChild(tb);
+    if(isAdmin()&&!b.protected){
+      var editBtn2=mk('button','btn btn-xs');editBtn2.textContent='✏️ Editar text';editBtn2.style.marginTop='6px';
+      editBtn2.addEventListener('click',function(){
+        genModal('Editar text',
+          '<div class="field"><div class="flbl">Contingut</div><textarea id="etx-c" class="finp finp-ta" style="min-height:120px">'+esc(b.content||'')+'</textarea></div>',
+          async function(){saveUndo();b.content=gv('etx-c');cm('gen-modal');await saveMain();var de=G('sec-'+sec.id);if(de)renderSection(de,sec);toast('✓ Guardat');}
+        );
+      });
+      wrap.appendChild(editBtn2);
+    }
   } else if(b.type==='song'){
     renderSongBlock(wrap,b,sec);
   } else if(b.type==='palette'){
@@ -2043,7 +2024,7 @@ function renderGallery(el,sec){
     if(r.image){var img=mk('img');img.src=r.image;img.alt=r.title||'';card.appendChild(img);}
     else{var ph=mk('div','gal-ph');ph.textContent='🖼';card.appendChild(ph);}
     if(r.title){var cap=mk('div','gal-cap');cap.textContent=r.title;card.appendChild(cap);}
-    card.addEventListener('click',function(){openRecModal(sec,r,null);});
+    card.addEventListener('click',function(){openDetailModal(sec,r);});
     grid.appendChild(card);
   });
   if(!(sec.records||[]).length){var em=mk('div','');em.style.cssText='color:var(--muted);font-size:13px;padding:20px 0;text-align:center';em.textContent='Galeria buida.';grid.appendChild(em);}
@@ -2077,7 +2058,7 @@ function renderThemes(el,sec){
     row.appendChild(node);
     if(isAdmin()){
       row.style.cursor='pointer';
-      row.addEventListener('click',function(e){e.preventDefault();openRecModal(sec,r,null);});
+      row.addEventListener('click',function(e){e.preventDefault();openDetailModal(sec,r);});
     }
     ts.appendChild(row);
   });
@@ -2118,7 +2099,7 @@ function renderSponsors(el,sec){
         '<div class="sponsor-role">'+esc(r.contact||'')+'</div>'+
         '<span class="sponsor-status '+(statusCls[r.status]||'ss-contactat')+'">'+esc(r.status||'Contactat')+'</span>'+
         (r.amount?'<div class="sponsor-amount">'+r.amount+'€</div>':'');
-      card.addEventListener('click',function(){openRecModal(sec,r,null);});
+      card.addEventListener('click',function(){openDetailModal(sec,r);});
       grid.appendChild(card);
     });
     if(!recs.length){var em=mk('div','');em.style.cssText='color:var(--muted);font-size:13px;padding:20px 0;text-align:center;grid-column:1/-1';em.textContent='Cap patrocinador.';grid.appendChild(em);}
@@ -2165,6 +2146,58 @@ function genModal(title,bodyHTML,onSave,onDelete){
 }
 
 // ══ RECORD MODAL ══
+// ══ DETAIL VIEW (click = view, Editar button = edit) ══
+function openDetailModal(sec,rec){
+  G('rec-title').textContent=rec.title||rec.name||'Detall';
+  var body=G('rec-body');body.innerHTML='';
+  if(sec.stages&&rec._status){
+    var srow=mk('div','field');srow.innerHTML='<div class="flbl">Estat</div><div style="font-size:13px;color:var(--cyan);font-weight:600">'+esc(rec._status)+'</div>';
+    body.appendChild(srow);
+  }
+  (sec.fields||[]).forEach(function(f){
+    if(f.id==='title'||f.id==='name')return;
+    var val=rec[f.id];
+    if(val===undefined||val===null||val===''||(Array.isArray(val)&&!val.length))return;
+    var row=mk('div','field');
+    var lbl=mk('div','flbl');lbl.textContent=f.name;row.appendChild(lbl);
+    var valEl=mk('div','');valEl.style.cssText='font-size:14px;color:var(--text);line-height:1.6;white-space:pre-wrap';
+    if(f.type==='people'){
+      valEl.innerHTML=(Array.isArray(val)?val:[]).map(function(pid){var p=D.people.find(function(pp){return pp.id===pid;});return p?'<span style="display:inline-block;margin:2px 4px 2px 0;padding:3px 9px;border-radius:20px;font-size:11px;background:rgba(255,255,255,.05);color:'+p.color+'">'+esc(p.name)+'</span>':'';}).join('');
+    }else if(f.type==='multiselect'){
+      valEl.textContent=(Array.isArray(val)?val:[]).join(', ');
+    }else if(f.type==='checklist'){
+      valEl.innerHTML=(f.options||[]).map(function(o){var on=Array.isArray(val)&&val.includes(o);return '<div style="display:flex;align-items:center;gap:8px;margin-bottom:4px"><span style="width:16px;height:16px;border-radius:5px;flex-shrink:0;display:flex;align-items:center;justify-content:center;font-size:9px;background:'+(on?'var(--green)':'rgba(255,255,255,.06)')+';color:#000">'+(on?'✓':'')+'</span><span style="'+(on?'':'color:var(--muted)')+'">'+esc(o)+'</span></div>';}).join('');
+    }else if(f.type==='checkbox'){
+      valEl.textContent=val?'Sí':'No';
+    }else if(f.type==='image'){
+      if(val)valEl.innerHTML='<img src="'+esc(val)+'" style="max-width:100%;max-height:170px;border-radius:10px">';else return;
+    }else{
+      valEl.textContent=val;
+    }
+    row.appendChild(valEl);
+    body.appendChild(row);
+  });
+  if(!body.children.length){var em=mk('div','');em.style.cssText='color:var(--muted);font-size:12px;text-align:center;padding:12px 0';em.textContent='Sense més detalls.';body.appendChild(em);}
+
+  var foot=G('rec-foot');foot.innerHTML='';
+  if(isAdmin()){
+    var db=mk('button','btn btn-d btn-sm');db.textContent='Eliminar';
+    db.addEventListener('click',async function(){
+      if(!confirm('Eliminar aquest element?'))return;
+      saveUndo();
+      var idx=(sec.records||[]).findIndex(function(r2){return r2.id===rec.id;});
+      if(idx>=0){var del=sec.records.splice(idx,1)[0];if(!D.trash)D.trash=[];del._secName=sec.name;del._deleted=todayStr;D.trash.unshift(del);}
+      cm('rec-modal');await saveMain();refreshSec(sec.id);buildStats_update();toast('Element eliminat');
+    });
+    foot.appendChild(db);
+  }
+  var sp=mk('div','');sp.style.flex='1';foot.appendChild(sp);
+  var cb=mk('button','btn btn-sm');cb.textContent='Tancar';cb.addEventListener('click',function(){cm('rec-modal');});foot.appendChild(cb);
+  var eb=mk('button','btn btn-p btn-sm');eb.textContent='✏️ Editar';
+  eb.addEventListener('click',function(){cm('rec-modal');setTimeout(function(){openRecModal(sec,rec,null);},180);});
+  foot.appendChild(eb);
+  om('rec-modal');
+}
 function openRecModal(sec,rec,defaultStatus){
   var isNew=!rec;
   if(isNew){
@@ -2516,21 +2549,11 @@ function renderSetGeneral(sb){
     '<div class="frow" style="margin-bottom:8px"><div class="field"><div class="flbl">Countdown label</div><input type="text" id="cfg-cdl" class="finp" value="'+eq(D.cfg.countdownLabel||'')+'"></div>'+
     '<div class="field"><div class="flbl">Countdown data</div><input type="date" id="cfg-cdd" class="finp" value="'+eq(D.cfg.countdownDate||'')+'"></div></div>'+
     '<button class="btn btn-p btn-sm" id="cfg-save-btn">Guardar configuració</button>'+
-    '<div class="sep"></div>'+
-    '<div class="s-h">🔔 Notificacions push (OneSignal)</div>'+
-    '<div class="isub" style="margin-bottom:10px;font-size:11px">Crea un compte gratuït a onesignal.com, afegeix la teva web com a "Web Push" i enganxa aquí l\'App ID i la REST API Key (Settings → Keys & IDs).</div>'+
-    '<div class="field" style="margin-bottom:8px"><div class="flbl">OneSignal App ID</div><input type="text" id="cfg-osid" class="finp" value="'+eq(D.cfg.oneSignalAppId||'')+'" placeholder="xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx"></div>'+
-    '<div class="field" style="margin-bottom:8px"><div class="flbl">OneSignal REST API Key</div><input type="password" id="cfg-oskey" class="finp" value="'+eq(D.cfg.oneSignalApiKey||'')+'"></div>'+
-    '<button class="btn btn-p btn-sm" id="cfg-os-save-btn">Guardar OneSignal</button>'+
     '</div>';
   G('cfg-save-btn').addEventListener('click',async function(){
     saveUndo();D.cfg.heroSubtitle=gv('cfg-sub');D.cfg.logoUrl=gv('cfg-logo');
     D.cfg.countdownLabel=gv('cfg-cdl');D.cfg.countdownDate=gv('cfg-cdd');
     await saveMain();applyLogo();buildStats_update();toast('✓ Configuració guardada');
-  });
-  G('cfg-os-save-btn').addEventListener('click',async function(){
-    saveUndo();D.cfg.oneSignalAppId=gv('cfg-osid').trim();D.cfg.oneSignalApiKey=gv('cfg-oskey').trim();
-    await saveMain();updateNotifBtnVisibility();initOneSignal();toast('✓ OneSignal configurat');
   });
 }
 
