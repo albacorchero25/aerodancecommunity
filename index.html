@@ -180,9 +180,9 @@ body.edit-mode #phase-bar{top:52px}
 .cal-nav:hover{border-color:var(--cyan);color:var(--cyan)}
 .cal-lbl{font-family:var(--font-title);font-size:16px;letter-spacing:.12em;flex:1;color:#fff}
 .cal-gw{padding:12px 15px}
-.cal-grid{display:grid;grid-template-columns:repeat(7,1fr);gap:3px}
+.cal-grid{display:grid;grid-template-columns:repeat(7,1fr);grid-auto-rows:1fr;gap:3px}
 .cal-dn{text-align:center;font-size:8px;color:var(--muted);padding:3px 0 7px;text-transform:uppercase;letter-spacing:.14em}
-.cal-cell{min-height:68px;background:var(--bg);border:1px solid var(--border);border-radius:5px;padding:5px;cursor:pointer;transition:border-color .2s}
+.cal-cell{min-height:68px;max-height:68px;overflow:hidden;background:var(--bg);border:1px solid var(--border);border-radius:5px;padding:5px;cursor:pointer;transition:border-color .2s;display:flex;flex-direction:column}
 .cal-cell:hover{border-color:var(--border2)}
 .cal-cell.today{border-color:rgba(0,200,212,.35)}
 .cal-cell.other{opacity:.15}
@@ -502,7 +502,7 @@ body.edit-mode #settings-toggle-btn{display:flex}
   .post-card{padding:14px 15px}
   .add-stage{padding:12px}
 
-  .cal-cell{min-height:80px;padding:5px;border-radius:9px}
+  .cal-cell{min-height:80px;max-height:80px;padding:5px;border-radius:9px}
   .cal-grid{gap:4px}
   .cal-dn{font-size:9px;padding:4px 0 8px}
   .cal-num{font-size:11px}
@@ -897,12 +897,13 @@ var DEFAULTS={
     {id:3,name:'Marta',role:'Coordinació',color:'#a78bfa'},{id:4,name:'Miriam',role:'Coreografia',color:'#f0b844'},
   ],
   hashtags:['#aerodance','#carnaval2027','#carnavaltarragona','#comparsa','#berllinafterdark','#tarragona'],
-  cfg:{countdownLabel:'Berlin After Dark · 2027',countdownDate:'2027-02-14',logoUrl:'',fontTitle:'Georgia,serif',heroSubtitle:'Berlin After Dark',customFontUrl:'',customFontName:''},
+  cfg:{countdownLabel:'Berlin After Dark · 2027',countdownDate:'2027-02-14',logoUrl:'',fontTitle:'Georgia,serif',heroSubtitle:'Berlin After Dark'},
   legendExtra:[{id:'p1',label:'Post pendent',color:'#a78bfa'},{id:'p2',label:'Post publicat',color:'#52c97a'}],
   kpiHistory:[],
   phases:JSON.parse(JSON.stringify(DEFAULT_PHASES)),
   pillars:JSON.parse(JSON.stringify(PILLARS)),
   trash:[],
+  calEvents:[],
   sections:[
     {id:'s_hero',type:'hero',name:'Inici',fixed:true},
     {id:'s_stats',type:'stats',name:'Resum KPIs',fixed:true},
@@ -939,7 +940,6 @@ var DEFAULTS={
         {name:'Verd confirmat',hex:'#52c97a'},
         {name:'Ambre avís',hex:'#d4a044'},
       ]},
-      {id:6,type:'typography',label:'Tipografia',fontName:'',fontUrl:'',sample:'AERODANCE 2027'},
     ]},
     {id:'s_themes',type:'themes',name:'Temàtiques',desc:'Arxiu de temàtiques de la comparsa des de 2005.',fields:JSON.parse(JSON.stringify(DEF_FIELDS.themes)),records:ALL_THEMES},
     {id:'s_trash',type:'trash',name:'Paperera',fixed:true},
@@ -957,17 +957,98 @@ var undoSnap=null;
 function saveUndo(){undoSnap=JSON.stringify({sections:D.sections,categories:D.categories,people:D.people,hashtags:D.hashtags,cfg:D.cfg,legendExtra:D.legendExtra,trash:D.trash,userSections:D.userSections,users:D.users,kpiHistory:D.kpiHistory,phases:D.phases,pillars:D.pillars,taskTypes:D.taskTypes,userViewOrder:D.userViewOrder});G('btn-undo').style.display='inline-flex';}
 function doUndo(){if(!undoSnap)return;var s=JSON.parse(undoSnap);Object.assign(D,s);undoSnap=null;G('btn-undo').style.display='none';saveMain();buildPage();toast('↩ Desfet');}
 
+// ══ CONCURRENCY-SAFE MERGE HELPERS ══
+// With several people editing at once, saving "whatever is in memory" can silently
+// overwrite someone else's just-saved change. To avoid lost updates / duplicates we
+// re-fetch the latest remote state right before writing and merge item-by-item.
+function mergeByKey(remoteArr,localArr,keyFn){
+  remoteArr=remoteArr||[];localArr=localArr||[];
+  var map={},order=[];
+  remoteArr.forEach(function(it){var k=keyFn(it);if(!(k in map))order.push(k);map[k]=it;});
+  localArr.forEach(function(it){var k=keyFn(it);if(!(k in map))order.push(k);map[k]=it;});
+  return order.map(function(k){return map[k];}).filter(function(v){return v!==undefined;});
+}
+function mergeById(remoteArr,localArr){return mergeByKey(remoteArr,localArr,function(it){return it.id;});}
+function mergeSections(remoteSecs,localSecs){
+  remoteSecs=remoteSecs||[];localSecs=localSecs||[];
+  var remoteMap={};remoteSecs.forEach(function(s){remoteMap[s.id]=s;});
+  var localMap={};localSecs.forEach(function(s){localMap[s.id]=s;});
+  var order=remoteSecs.map(function(s){return s.id;});
+  localSecs.forEach(function(s){if(order.indexOf(s.id)===-1)order.push(s.id);});
+  return order.map(function(id){
+    var r=remoteMap[id],l=localMap[id];
+    if(r&&l){
+      var merged=Object.assign({},l);
+      if(r.records||l.records)merged.records=mergeById(r.records,l.records);
+      if(r.blocks||l.blocks)merged.blocks=mergeById(r.blocks,l.blocks);
+      return merged;
+    }
+    return l||r;
+  }).filter(Boolean);
+}
+function mergeMainState(remote,local){
+  if(!remote)return local;
+  if(!local)return remote;
+  return {
+    sections:mergeSections(remote.sections,local.sections),
+    categories:mergeById(remote.categories,local.categories),
+    people:mergeById(remote.people,local.people),
+    cfg:Object.assign({},remote.cfg,local.cfg),
+    legendExtra:mergeById(remote.legendExtra,local.legendExtra),
+    trash:mergeById(remote.trash,local.trash),
+    userSections:Object.assign({},remote.userSections,local.userSections),
+    kpiHistory:mergeByKey(remote.kpiHistory,local.kpiHistory,function(it){return it.date;}),
+    phases:local.phases||remote.phases,
+    pillars:local.pillars||remote.pillars,
+    taskTypes:mergeByKey(remote.taskTypes,local.taskTypes,function(it){return it;}),
+    userViewOrder:Object.assign({},remote.userViewOrder,local.userViewOrder),
+    calEvents:mergeById(remote.calEvents,local.calEvents),
+  };
+}
+
 // ══ SAVE / LOAD ══
-async function saveMain(){await dbSet('aero_main2',{sections:D.sections,categories:D.categories,people:D.people,hashtags:D.hashtags,cfg:D.cfg,legendExtra:D.legendExtra,trash:D.trash,userSections:D.userSections,kpiHistory:D.kpiHistory,phases:D.phases,pillars:D.pillars,taskTypes:D.taskTypes,userViewOrder:D.userViewOrder});}
-async function saveUsers(){await dbSet('aero_users2',D.users);}
+async function saveMain(){
+  var remote=await dbGet('aero_main2');
+  var local={sections:D.sections,categories:D.categories,people:D.people,cfg:D.cfg,legendExtra:D.legendExtra,trash:D.trash,userSections:D.userSections,kpiHistory:D.kpiHistory,phases:D.phases,pillars:D.pillars,taskTypes:D.taskTypes,userViewOrder:D.userViewOrder,calEvents:D.calEvents};
+  var merged=mergeMainState(remote,local);
+  var ok=await dbSet('aero_main2',merged);
+  if(ok)Object.assign(D,merged);
+  return ok;
+}
+async function saveUsers(){
+  var remote=await dbGet('aero_users2');
+  var merged=Object.assign({},remote,D.users);
+  var ok=await dbSet('aero_users2',merged);
+  if(ok)D.users=merged;
+  return ok;
+}
 async function loadAll(){
   var main=await dbGet('aero_main2');var users=await dbGet('aero_users2');
   D=JSON.parse(JSON.stringify(DEFAULTS));
-  if(main){['sections','categories','people','hashtags','cfg','legendExtra','trash','userSections','kpiHistory','phases','pillars','taskTypes','userViewOrder'].forEach(function(k){if(main[k]!==undefined)D[k]=main[k];});}
+  if(main){['sections','categories','people','cfg','legendExtra','trash','userSections','kpiHistory','phases','pillars','taskTypes','userViewOrder','calEvents'].forEach(function(k){if(main[k]!==undefined)D[k]=main[k];});}
   if(!D.taskTypes)D.taskTypes=[...DEFAULT_TASK_TYPES];
   if(!D.userViewOrder)D.userViewOrder={};
+  if(!D.calEvents)D.calEvents=[];
   D.users=JSON.parse(JSON.stringify(DEFAULTS.users));
   if(users){Object.keys(users).forEach(function(u){var v=users[u];D.users[u]=typeof v==='object'?v:{pass:v,name:u};});}
+}
+// Passive background refresh so everyone sees each other's changes without restarting the app.
+var _pollT=null;
+function startAutoRefresh(){
+  if(_pollT)clearInterval(_pollT);
+  _pollT=setInterval(async function(){
+    if(!currentUser)return;
+    if(document.querySelector('.modal-overlay.open'))return; // don't disrupt someone mid-edit
+    if(document.getElementById('settings-panel').classList.contains('open'))return;
+    var remote=await dbGet('aero_main2');
+    if(!remote)return;
+    var local={sections:D.sections,categories:D.categories,people:D.people,cfg:D.cfg,legendExtra:D.legendExtra,trash:D.trash,userSections:D.userSections,kpiHistory:D.kpiHistory,phases:D.phases,pillars:D.pillars,taskTypes:D.taskTypes,userViewOrder:D.userViewOrder,calEvents:D.calEvents};
+    var merged=mergeMainState(remote,local);
+    if(JSON.stringify(merged)!==JSON.stringify(local)){
+      Object.assign(D,merged);
+      buildPage();
+    }
+  },20000);
 }
 
 // ══ AUTH ══
@@ -998,10 +1079,11 @@ async function doLogin(){
     st('top-welcome','Benvinguda, '+dn);
     G('top-badge').style.display=isAdmin()?'inline':'none';
     st('l-err','');document.body.classList.toggle('is-admin',isAdmin());applyLogo();applyFont();buildPage();
+    startAutoRefresh();
     if(!dbOk)setTimeout(function(){toast('⚠️ No es pot connectar amb la base de dades — els canvis no es guardaran ni es veuran a altres dispositius');},600);
   }else{st('l-err','Usuari o contrasenya incorrectes');setTimeout(function(){st('l-err','');},2500);}
 }
-function doLogout(){currentUser=null;setEditMode(false);document.body.classList.remove('is-admin');G('login-screen').style.display='flex';G('app').classList.remove('visible');}
+function doLogout(){currentUser=null;setEditMode(false);document.body.classList.remove('is-admin');G('login-screen').style.display='flex';G('app').classList.remove('visible');if(_pollT)clearInterval(_pollT);}
 function getUserName(u){var uobj=D.users[u];return uobj&&uobj.name?uobj.name:u;}
 
 // ══ CUSTOM LINE-ICON SET (no emoji, hand-drawn) ══
@@ -1143,12 +1225,7 @@ function applyLogo(){
   var ls=G('login-subtitle');if(ls)ls.textContent=D.cfg.heroSubtitle||'Berlin After Dark';
 }
 function applyFont(){
-  var f=D.cfg.fontTitle||'Georgia,serif';
-  if(D.cfg.customFontName&&D.cfg.customFontUrl){
-    if(!document.getElementById('custom-font-style')){var s=document.createElement('style');s.id='custom-font-style';s.textContent='@font-face{font-family:"'+D.cfg.customFontName+'";src:url("'+D.cfg.customFontUrl+'");}';document.head.appendChild(s);}
-    f='"'+D.cfg.customFontName+'",'+f;
-  }
-  document.documentElement.style.setProperty('--font-title',f);
+  document.documentElement.style.setProperty('--font-title',D.cfg.fontTitle||'Georgia,serif');
 }
 
 // ══ PHASE BAR ══
@@ -1575,7 +1652,9 @@ function buildCalGrid(gw,legEl){
     if(ds===todayStamp)cell.classList.add('today');
     var num=mk('div','cal-num');num.textContent=d;
     cell.appendChild(num);
-    (evs[ds]||[]).forEach(function(ev){
+    var dayEvs=evs[ds]||[];
+    var MAX_SHOW=3;
+    dayEvs.slice(0,MAX_SHOW).forEach(function(ev){
       var evEl=mk('div','cal-ev');
       evEl.style.background='rgba('+hexToRgb(ev.color||'#00c8d4')+',0.18)';
       evEl.style.color=ev.color||'#00c8d4';
@@ -1585,6 +1664,12 @@ function buildCalGrid(gw,legEl){
       if(ev.onClick)evEl.addEventListener('click',function(e){e.stopPropagation();ev.onClick();});
       cell.appendChild(evEl);
     });
+    if(dayEvs.length>MAX_SHOW){
+      var more=mk('div','cal-ev');more.style.cssText='background:rgba(255,255,255,.06);color:var(--muted);font-weight:600';
+      more.textContent='+'+(dayEvs.length-MAX_SHOW)+' més';
+      more.addEventListener('click',function(capDs,capEvs){return function(e){e.stopPropagation();openDayAgenda(capDs,capEvs);};}(ds,dayEvs));
+      cell.appendChild(more);
+    }
     cell.addEventListener('click',function(capDs){return function(){if(isAdmin())openCalAddModal(capDs);};}(ds));
     grid.appendChild(cell);
   }
@@ -1653,12 +1738,134 @@ function collectCalEvents(){
   ce.forEach(function(r){
     if(!r.date)return;
     var cat=D.categories.find(function(c){return c.id===r.catId;});
-    add(r.date,{title:r.title,color:cat?cat.color:'#00c8d4',notes:r.notes});
+    add(r.date,{title:r.title,color:cat?cat.color:'#00c8d4',notes:r.notes,onClick:function(){openCalEventDetail(r);}});
   });
 
   return evs;
 }
 
+function collectCalExtraFields(cat){
+  var out={};
+  if(!cat||!cat.extraFields)return out;
+  cat.extraFields.forEach(function(f){
+    if(f.type==='people'){
+      var pw=G('cal-ef-'+f.id);
+      out[f.id]=pw?Array.from(pw.querySelectorAll('.pcheck.on')).map(function(c){return+c.dataset.pid;}):[];
+    }else{
+      var el=G('cal-ef-'+f.id);
+      out[f.id]=el?el.value:'';
+    }
+  });
+  return out;
+}
+function refreshCalendarSection(){var calSec=D.sections.find(function(s){return s.type==='calendar';});if(calSec){var el=G('sec-'+calSec.id);if(el)renderSection(el,calSec);}}
+function openDayAgenda(dateStr,dayEvs){
+  var html=dayEvs.map(function(ev,i){
+    return '<div class="list-it" data-dayidx="'+i+'" style="border-left:3px solid '+(ev.color||'var(--cyan)')+'"><div class="li-info"><div class="li-title">'+esc(ev.title)+'</div>'+(ev.notes?'<div class="li-sub">'+esc(ev.notes)+'</div>':'')+'</div></div>';
+  }).join('');
+  genModal(dateStr,html,null);
+  var ft=G('gen-foot');if(ft)ft.innerHTML='<button class="btn btn-sm" style="width:100%;justify-content:center" onclick="cm(\'gen-modal\')">Tancar</button>';
+  setTimeout(function(){
+    document.querySelectorAll('[data-dayidx]').forEach(function(el){
+      el.addEventListener('click',function(){var i=+el.dataset.dayidx;cm('gen-modal');if(dayEvs[i].onClick)setTimeout(function(){dayEvs[i].onClick();},180);});
+    });
+  },10);
+}
+function openCalEventDetail(rec){
+  var cat=D.categories.find(function(c){return c.id===rec.catId;});
+  G('rec-title').textContent=rec.title||'Event';
+  var body=G('rec-body');body.innerHTML='';
+  function addRow(label,val){
+    if(val===undefined||val===null||val===''||(Array.isArray(val)&&!val.length))return;
+    var row=mk('div','field');
+    row.innerHTML='<div class="flbl">'+esc(label)+'</div>';
+    var v=mk('div','');v.style.cssText='font-size:14px;color:var(--text);white-space:pre-wrap';
+    v.textContent=val;row.appendChild(v);body.appendChild(row);
+  }
+  addRow('Categoria',cat?cat.name:'');
+  addRow('Data',rec.date);
+  if(cat&&cat.extraFields)cat.extraFields.forEach(function(f){
+    var v=rec[f.id];
+    if(f.type==='people'&&Array.isArray(v)){
+      v=v.map(function(pid){var p=D.people.find(function(pp){return pp.id===pid;});return p?p.name:null;}).filter(Boolean).join(', ');
+    }
+    addRow(f.name,v);
+  });
+  addRow('Notes',rec.notes);
+  if(!body.children.length){var em=mk('div','');em.style.cssText='color:var(--muted);font-size:12px;text-align:center;padding:12px 0';em.textContent='Sense més detalls.';body.appendChild(em);}
+  var foot=G('rec-foot');foot.innerHTML='';
+  if(isAdmin()){
+    var db=mk('button','btn btn-d btn-sm');db.textContent='Eliminar';
+    db.addEventListener('click',async function(){
+      if(!confirm('Eliminar aquest event?'))return;
+      saveUndo();D.calEvents=(D.calEvents||[]).filter(function(e){return e.id!==rec.id;});
+      cm('rec-modal');await saveMain();refreshCalendarSection();toast('Event eliminat');
+    });
+    foot.appendChild(db);
+  }
+  var sp=mk('div','');sp.style.flex='1';foot.appendChild(sp);
+  var cb=mk('button','btn btn-sm');cb.textContent='Tancar';cb.addEventListener('click',function(){cm('rec-modal');});foot.appendChild(cb);
+  if(isAdmin()){
+    var eb=mk('button','btn btn-p btn-sm');eb.textContent='✏️ Editar';
+    eb.addEventListener('click',function(){cm('rec-modal');setTimeout(function(){openCalEventEdit(rec);},180);});
+    foot.appendChild(eb);
+  }
+  om('rec-modal');
+}
+function openCalEventEdit(rec){
+  var cats=D.categories||[];
+  var catGrid='<div class="cat-pick-grid">';
+  cats.forEach(function(cat,i){
+    catGrid+='<div class="cat-pick-item'+(cat.id===rec.catId?' sel':'')+'" data-catid="'+cat.id+'" data-i="'+i+'" onclick="pickCalCat(this,'+cat.id+')">'+
+      '<div class="cat-pick-dot" style="background:'+cat.color+'"></div>'+
+      '<span style="font-size:12px;color:var(--text)">'+esc(cat.name)+'</span></div>';
+  });
+  catGrid+='</div>';
+  var fieldsHTML='<div class="cal-add-fields visible" id="cal-add-fields">'+
+    '<div class="field"><div class="flbl">Títol</div><input type="text" id="cal-ev-title" class="finp" value="'+eq(rec.title||'')+'"></div>'+
+    '<div class="field"><div class="flbl">Data</div><input type="date" id="cal-ev-date" class="finp" value="'+eq(rec.date||'')+'"></div>'+
+    '<div id="cal-extra-fields"></div>'+
+    '<div class="field"><div class="flbl">Notes</div><textarea id="cal-ev-notes" class="finp finp-ta" style="min-height:50px">'+esc(rec.notes||'')+'</textarea></div>'+
+    '</div>';
+  genModal('Editar event',
+    '<div class="field"><div class="flbl" style="margin-bottom:8px">Tipus d\'event</div>'+catGrid+'</div>'+fieldsHTML,
+    async function(){
+      var title=gv('cal-ev-title').trim();
+      var date=gv('cal-ev-date');
+      var notes=gv('cal-ev-notes');
+      var catEl=document.querySelector('.cat-pick-item.sel');
+      var catId=catEl?+catEl.dataset.catid:rec.catId;
+      if(!title||!date){toast('⚠️ Títol i data obligatoris');return;}
+      var cat=D.categories.find(function(c){return c.id===catId;});
+      saveUndo();
+      rec.title=title;rec.date=date;rec.notes=notes;rec.catId=catId;
+      Object.assign(rec,collectCalExtraFields(cat));
+      cm('gen-modal');
+      await saveMain();
+      refreshCalendarSection();
+      toast('✓ Event actualitzat');
+    },
+    async function(){
+      if(!confirm('Eliminar aquest event?'))return;
+      saveUndo();D.calEvents=(D.calEvents||[]).filter(function(e){return e.id!==rec.id;});
+      cm('gen-modal');await saveMain();refreshCalendarSection();toast('Event eliminat');
+    }
+  );
+  var preSel=document.querySelector('.cat-pick-item[data-catid="'+rec.catId+'"]');
+  if(preSel){
+    window.pickCalCat(preSel,rec.catId);
+    var cat=D.categories.find(function(c){return c.id===rec.catId;});
+    if(cat&&cat.extraFields)cat.extraFields.forEach(function(f){
+      if(f.type==='people'){
+        var pw=G('cal-ef-'+f.id);
+        if(pw&&Array.isArray(rec[f.id]))Array.from(pw.querySelectorAll('.pcheck')).forEach(function(ch){if(rec[f.id].includes(+ch.dataset.pid))ch.classList.add('on');});
+      }else{
+        var el=G('cal-ef-'+f.id);
+        if(el&&rec[f.id]!==undefined)el.value=rec[f.id];
+      }
+    });
+  }
+}
 function openCalAddModal(dateStr){
   var cats=D.categories||[];
   var catGrid='<div class="cat-pick-grid">';
@@ -1706,11 +1913,12 @@ function openCalAddModal(dateStr){
 
       saveUndo();
       if(!D.calEvents)D.calEvents=[];
-      D.calEvents.push({id:uid(),title:title,date:date,notes:notes,catId:catId});
+      var newEv={id:uid(),title:title,date:date,notes:notes,catId:catId};
+      Object.assign(newEv,collectCalExtraFields(cat));
+      D.calEvents.push(newEv);
       cm('gen-modal');
       await saveMain();
-      var calSec=D.sections.find(function(s){return s.type==='calendar';});
-      if(calSec){var calEl=G('sec-'+calSec.id);if(calEl)renderSection(calEl,calSec);}
+      refreshCalendarSection();
       toast('✓ Event afegit');
     }
   );
@@ -1737,6 +1945,7 @@ window.pickCalCat=function(el,catId){
       (D.people||[]).forEach(function(p){
         var ch=document.createElement('div');ch.className='pcheck';
         ch.style.borderColor=p.color;
+        ch.dataset.pid=p.id;
         ch.setAttribute('onclick','this.classList.toggle(\'on\')');
         var dot=document.createElement('div');dot.className='pcheck-dot';dot.style.background=p.color;
         ch.appendChild(dot);ch.appendChild(document.createTextNode(p.name));
@@ -1906,12 +2115,7 @@ function renderDocBlock(wrap,b,sec){
     if(!(b.colors||[]).length){var em=mk('div','');em.style.cssText='color:var(--muted);font-size:12px';em.textContent='Sense colors definits encara.';grid.appendChild(em);}
     wrap.appendChild(grid);
   } else if(b.type==='typography'){
-    var lbl=mk('div','ed-sub-h');lbl.textContent=b.label||'Tipografia';wrap.appendChild(lbl);
-    var tb2=mk('div','ed-text-block');
-    var fontCss=b.fontName?('font-family:"'+b.fontName+'",var(--font-title);'):'';
-    tb2.innerHTML='<div style="font-size:11px;color:var(--muted);margin-bottom:9px">'+(b.fontName?esc(b.fontName):'Sense tipografia personalitzada encara')+'</div>'+
-      '<div style="font-size:26px;'+fontCss+'color:#fff;letter-spacing:.03em">'+esc(b.sample||'AERODANCE 2027')+'</div>';
-    wrap.appendChild(tb2);
+    return;
   } else if(b.type==='image'){
     var ib=mk('div','ed-img-block');
     if(b.src)ib.innerHTML='<img src="'+esc(b.src)+'" alt="'+esc(b.alt||'')+'">';
@@ -2266,10 +2470,17 @@ function openRecModal(sec,rec,defaultStatus){
     } else if(f.type==='image'){
       var ia=mk('div','img-area');ia.id='rf-'+f.id;
       if(val)ia.innerHTML='<img src="'+esc(val)+'" style="max-width:100%;max-height:120px;border-radius:4px">';
-      else ia.textContent='+ URL de la imatge';
+      else ia.textContent='+ URL o puja una foto';
       var ui=mk('input','finp');ui.type='text';ui.id='rf-'+f.id+'-url';ui.placeholder='https://...';ui.value=val||'';ui.style.marginTop='6px';
-      ui.addEventListener('input',function(){if(ui.value)ia.innerHTML='<img src="'+ui.value+'" style="max-width:100%;max-height:120px;border-radius:4px">';else ia.textContent='+ URL de la imatge';});
-      field.appendChild(ia);field.appendChild(ui);
+      ui.addEventListener('input',function(){if(ui.value)ia.innerHTML='<img src="'+ui.value+'" style="max-width:100%;max-height:120px;border-radius:4px">';else ia.textContent='+ URL o puja una foto';});
+      var fi=mk('input','finp');fi.type='file';fi.accept='image/*';fi.style.marginTop='6px';
+      fi.addEventListener('change',function(e){
+        var file=e.target.files&&e.target.files[0];if(!file)return;
+        var reader=new FileReader();
+        reader.onload=function(){ui.value=reader.result;ia.innerHTML='<img src="'+reader.result+'" style="max-width:100%;max-height:120px;border-radius:4px">';};
+        reader.readAsDataURL(file);
+      });
+      field.appendChild(ia);field.appendChild(ui);field.appendChild(fi);
     } else if(f.type==='checklist'){
       var cl=mk('div','');cl.id='rf-'+f.id;
       var checked=Array.isArray(val)?[...val]:[];
@@ -2325,11 +2536,33 @@ function openRecModal(sec,rec,defaultStatus){
     });
     var tf=sec.fields.find(function(f){return f.id==='title'||f.id==='name';});
     if(tf&&!rec._title)rec._title=rec[tf.id];
+    if(sec.type==='pipeline')syncPipelineTask(rec);
     if(isNew){if(!sec.records)sec.records=[];sec.records.push(rec);}
     cm('rec-modal');await saveMain();refreshSec(sec.id);buildStats_update();toast(isNew?'✓ Creat':'✓ Guardat');
   });
   foot.appendChild(svb);
   om('rec-modal');
+}
+// Keeps a Tasques record (categoria "Xarxes socials") in sync with each Pipeline post,
+// so a post added to the pipeline always shows up as a task too. Tracks the link via
+// rec._taskId so re-saving updates the same task instead of creating duplicates.
+function syncPipelineTask(rec){
+  var ts=D.sections.find(function(s){return s.type==='tasks';});
+  if(!ts)return;
+  if(!D.taskTypes)D.taskTypes=[...DEFAULT_TASK_TYPES];
+  if(D.taskTypes.indexOf('Xarxes socials')===-1)D.taskTypes.push('Xarxes socials');
+  if(!ts.records)ts.records=[];
+  var title='Publicar: '+(rec.title||'(sense títol)');
+  var notes='Vinculat al pipeline'+(rec.date?' · '+rec.date:'');
+  var existing=rec._taskId?ts.records.find(function(t){return t.id===rec._taskId;}):null;
+  if(existing){
+    existing.title=title;existing.notes=notes;
+    if(rec.managers)existing.managers=rec.managers;
+  }else{
+    var newTask={id:uid(),title:title,cat:'Xarxes socials',status:'Pendent',notes:notes,managers:rec.managers||[],_done:false,_pipelineId:rec.id};
+    ts.records.push(newTask);
+    rec._taskId=newTask.id;
+  }
 }
 
 // ══ LEGEND EDITOR ══
@@ -2454,8 +2687,8 @@ function openFieldNew(sec,cb){
 // ══ SETTINGS ══
 var _stab='general';
 function renderSettings(){
-  var tabs=['general','disseny','persones','categories','hashtags','seccions','usuaris','vista','tasques'];
-  var labels={general:'General',disseny:'Disseny',persones:'Persones',categories:'Categories',hashtags:'Hashtags',seccions:'Seccions',usuaris:'Usuaris',vista:'Vista',tasques:'Tipus Tasques'};
+  var tabs=['general','disseny','persones','categories','seccions','usuaris','vista','tasques'];
+  var labels={general:'General',disseny:'Disseny',persones:'Persones',categories:'Categories',seccions:'Seccions',usuaris:'Usuaris',vista:'Vista',tasques:'Tipus Tasques'};
   var stabs=G('stabs');stabs.innerHTML='';
   tabs.forEach(function(t){
     if((t==='usuaris'||t==='disseny')&&!isAdmin())return;
@@ -2468,7 +2701,6 @@ function renderSettings(){
   else if(_stab==='disseny')renderSetDisseny(sb);
   else if(_stab==='persones')renderSetPeople(sb);
   else if(_stab==='categories')renderSetCats(sb);
-  else if(_stab==='hashtags')renderSetHashtags(sb);
   else if(_stab==='seccions')renderSetSections(sb);
   else if(_stab==='usuaris')renderSetUsers(sb);
   else if(_stab==='vista')renderSetVista(sb);
@@ -2478,18 +2710,10 @@ function renderSettings(){
 function renderSetDisseny(sb){
   var docSec=D.sections.find(function(s){return s.type==='document';});
   var palBlock=docSec&&docSec.blocks.find(function(b){return b.type==='palette';});
-  var typBlock=docSec&&docSec.blocks.find(function(b){return b.type==='typography';});
   sb.innerHTML='<div class="s-sec"><div class="s-h">🎨 Gama cromàtica</div>'+
     '<div class="isub" style="margin-bottom:10px;font-size:11px">Aquests colors es mostren a la Línia Editorial. Només tu els pots canviar.</div>'+
     '<div id="pal-list"></div>'+
     '<div style="display:flex;gap:6px;margin-top:8px"><button class="btn btn-sm" id="pal-add-btn">+ Color</button><button class="btn btn-p btn-sm" id="pal-save-btn">Guardar paleta</button></div>'+
-    '</div>'+
-    '<div class="s-sec"><div class="s-h">🔤 Tipografia</div>'+
-    '<div class="isub" style="margin-bottom:10px;font-size:11px">Puja un arxiu de tipografia (.woff2, .ttf, .otf) per canviar la lletra dels títols de tota l\'app.</div>'+
-    '<div class="field" style="margin-bottom:8px"><div class="flbl">Nom de la tipografia</div><input type="text" id="typ-name" class="finp" value="'+eq((typBlock&&typBlock.fontName)||'')+'" placeholder="Ex: Neue Machina"></div>'+
-    '<div class="field" style="margin-bottom:8px"><div class="flbl">Arxiu de la tipografia</div><input type="file" id="typ-file" class="finp" accept=".woff,.woff2,.ttf,.otf"></div>'+
-    '<div class="field" style="margin-bottom:8px"><div class="flbl">Text de mostra</div><input type="text" id="typ-sample" class="finp" value="'+eq((typBlock&&typBlock.sample)||'AERODANCE 2027')+'"></div>'+
-    '<button class="btn btn-p btn-sm" id="typ-save-btn">Guardar tipografia</button>'+
     '</div>';
 
   function buildPalList(){
@@ -2518,25 +2742,6 @@ function renderSetDisseny(sb){
       var i=+inp.dataset.i,f=inp.dataset.f;if(palBlock.colors[i])palBlock.colors[i][f]=inp.value;
     });
     saveUndo();await saveMain();toast('✓ Paleta guardada');
-    var de=docSec&&G('sec-'+docSec.id);if(de)renderSection(de,docSec);
-  });
-
-  var pendingFontData=null;
-  G('typ-file').addEventListener('change',function(e){
-    var f=e.target.files[0];if(!f)return;
-    var reader=new FileReader();
-    reader.onload=function(){pendingFontData=reader.result;};
-    reader.readAsDataURL(f);
-  });
-  G('typ-save-btn').addEventListener('click',async function(){
-    if(!docSec)return;
-    if(!typBlock){typBlock={id:uid(),type:'typography',label:'Tipografia',fontName:'',fontUrl:'',sample:''};docSec.blocks.push(typBlock);}
-    var name=gv('typ-name').trim();var sample=gv('typ-sample').trim()||'AERODANCE 2027';
-    saveUndo();
-    typBlock.fontName=name;typBlock.sample=sample;
-    if(pendingFontData){typBlock.fontUrl=pendingFontData;D.cfg.customFontUrl=pendingFontData;D.cfg.customFontName=name||'CustomFont';}
-    else if(name){D.cfg.customFontName=name;}
-    await saveMain();applyFont();toast('✓ Tipografia guardada');
     var de=docSec&&G('sec-'+docSec.id);if(de)renderSection(de,docSec);
   });
 }
@@ -2710,16 +2915,6 @@ window.addCat=function(onDone){
   );
 };
 
-function renderSetHashtags(sb){
-  sb.innerHTML='<div class="s-sec"><div class="s-h">Hashtags</div>'+
-    '<textarea id="ht-area" class="finp finp-ta" style="min-height:120px">'+esc((D.hashtags||[]).join('\n'))+'</textarea>'+
-    '<button class="btn btn-p btn-sm" id="ht-save" style="margin-top:8px">Guardar</button></div>';
-  G('ht-save').addEventListener('click',async function(){
-    saveUndo();D.hashtags=(gv('ht-area')||'').split('\n').map(function(s){return s.trim();}).filter(Boolean);
-    await saveMain();toast('✓ Hashtags guardats');
-  });
-}
-
 function renderSetSections(sb){
   sb.innerHTML='<div class="s-sec"><div class="s-h">Visibilitat de seccions per usuari</div>'+
     '<div id="usec-wrap"></div></div>';
@@ -2772,7 +2967,17 @@ function renderSetUsers(sb){
           }
         );
       });
-      row.appendChild(av);row.appendChild(im);row.appendChild(eb);ul.appendChild(row);
+      var db=mk('button','btn btn-xs btn-d');db.textContent='×';
+      db.addEventListener('click',async function(){
+        if(u==='admin'){toast('⚠️ No es pot eliminar l\'usuari admin');return;}
+        if(u===currentUser){toast('⚠️ No et pots eliminar a tu mateix');return;}
+        if(!confirm('Eliminar l\'usuari "'+name+'"?'))return;
+        saveUndo();delete D.users[u];
+        if(D.userSections)delete D.userSections[u];
+        if(D.userViewOrder)delete D.userViewOrder[u];
+        await saveUsers();await saveMain();buildUserList();toast('✓ Usuari eliminat');
+      });
+      row.appendChild(av);row.appendChild(im);row.appendChild(eb);row.appendChild(db);ul.appendChild(row);
     });
     G('add-user-btn').addEventListener('click',function(){
       genModal('Nou usuari',
