@@ -189,6 +189,7 @@ body.edit-mode #phase-bar{top:52px}
 .cal-num{font-size:9px;color:var(--muted);margin-bottom:2px}
 .cal-cell.today .cal-num{color:var(--cyan)}
 .cal-ev{font-size:9px;padding:2px 4px;border-radius:3px;margin-bottom:2px;overflow:hidden;white-space:nowrap;text-overflow:ellipsis;cursor:pointer}
+.cal-ev-icon{display:flex;align-items:center;justify-content:center;font-size:13px;line-height:1;padding:2px 0;border-left:none!important}
 .cal-leg{padding:10px 20px;border-top:1px solid var(--border);display:flex;flex-wrap:wrap;gap:9px;background:var(--bg2);align-items:center}
 .leg-it{display:flex;align-items:center;gap:5px;font-size:10px;color:var(--muted);letter-spacing:.06em}
 .leg-sw{width:7px;height:7px;border-radius:2px}
@@ -507,6 +508,7 @@ body.edit-mode #settings-toggle-btn{display:flex}
   .cal-dn{font-size:9px;padding:4px 0 8px}
   .cal-num{font-size:11px}
   .cal-ev{font-size:10px;padding:3px 5px;border-radius:5px;margin-bottom:3px;font-weight:600}
+  .cal-ev-icon{font-size:16px;padding:2px 0}
   .cal-hd{padding:14px 14px}
   .cal-lbl{font-size:17px}
 
@@ -961,48 +963,70 @@ function doUndo(){if(!undoSnap)return;var s=JSON.parse(undoSnap);Object.assign(D
 // With several people editing at once, saving "whatever is in memory" can silently
 // overwrite someone else's just-saved change. To avoid lost updates / duplicates we
 // re-fetch the latest remote state right before writing and merge item-by-item.
-function mergeByKey(remoteArr,localArr,keyFn){
+// PROBLEM THIS SOLVES: a plain union-merge can't tell "never existed" apart from
+// "existed and was just deleted" — the deleted item would keep coming back from the
+// remote copy. pendingDeletes is a short-lived tombstone list consulted by every merge
+// so a deletion always wins, even against a stale remote fetch.
+var pendingDeletes={sections:{},records:{},categories:{},people:{},legendExtra:{},calEvents:{},trash:{},taskTypes:{},users:{}};
+function markDeleted(bucket,key){if(!pendingDeletes[bucket])pendingDeletes[bucket]={};pendingDeletes[bucket][key]=true;}
+function markRecordDeleted(secId,recId){if(!pendingDeletes.records[secId])pendingDeletes.records[secId]={};pendingDeletes.records[secId][recId]=true;}
+function clearPendingDeletes(){Object.keys(pendingDeletes).forEach(function(k){pendingDeletes[k]={};});}
+window.emptyTrashNow=function(secId){
+  if(!confirm('Buidar paperera?'))return;
+  (D.trash||[]).forEach(function(t){markDeleted('trash',t.id);});
+  D.trash=[];saveMain();refreshSec(secId);toast('Paperera buidada');
+};
+
+function mergeByKey(remoteArr,localArr,keyFn,excludeSet){
   remoteArr=remoteArr||[];localArr=localArr||[];
   var map={},order=[];
   remoteArr.forEach(function(it){var k=keyFn(it);if(!(k in map))order.push(k);map[k]=it;});
   localArr.forEach(function(it){var k=keyFn(it);if(!(k in map))order.push(k);map[k]=it;});
-  return order.map(function(k){return map[k];}).filter(function(v){return v!==undefined;});
+  return order.map(function(k){return map[k];}).filter(function(v){return v!==undefined;})
+    .filter(function(v){return !(excludeSet&&excludeSet[keyFn(v)]);});
 }
-function mergeById(remoteArr,localArr){return mergeByKey(remoteArr,localArr,function(it){return it.id;});}
+function mergeById(remoteArr,localArr,excludeSet){return mergeByKey(remoteArr,localArr,function(it){return it.id;},excludeSet);}
 function mergeSections(remoteSecs,localSecs){
   remoteSecs=remoteSecs||[];localSecs=localSecs||[];
   var remoteMap={};remoteSecs.forEach(function(s){remoteMap[s.id]=s;});
   var localMap={};localSecs.forEach(function(s){localMap[s.id]=s;});
   var order=remoteSecs.map(function(s){return s.id;});
   localSecs.forEach(function(s){if(order.indexOf(s.id)===-1)order.push(s.id);});
-  return order.map(function(id){
+  var out=[];
+  order.forEach(function(id){
+    if(pendingDeletes.sections[id])return;
     var r=remoteMap[id],l=localMap[id];
-    if(r&&l){
-      var merged=Object.assign({},l);
-      if(r.records||l.records)merged.records=mergeById(r.records,l.records);
-      if(r.blocks||l.blocks)merged.blocks=mergeById(r.blocks,l.blocks);
-      return merged;
-    }
-    return l||r;
-  }).filter(Boolean);
+    var base=l||r;if(!base)return;
+    var merged=Object.assign({},base);
+    var recExclude=pendingDeletes.records[id]||{};
+    if((r&&r.records)||(l&&l.records))merged.records=mergeById(r?r.records:[],l?l.records:[],recExclude);
+    if((r&&r.blocks)||(l&&l.blocks))merged.blocks=mergeById(r?r.blocks:[],l?l.blocks:[]);
+    out.push(merged);
+  });
+  return out;
+}
+function mergeObjExcl(remoteObj,localObj,excludeSet){
+  var merged=Object.assign({},remoteObj,localObj);
+  if(excludeSet)Object.keys(excludeSet).forEach(function(k){delete merged[k];});
+  return merged;
 }
 function mergeMainState(remote,local){
   if(!remote)return local;
   if(!local)return remote;
   return {
     sections:mergeSections(remote.sections,local.sections),
-    categories:mergeById(remote.categories,local.categories),
-    people:mergeById(remote.people,local.people),
+    categories:mergeById(remote.categories,local.categories,pendingDeletes.categories),
+    people:mergeById(remote.people,local.people,pendingDeletes.people),
     cfg:Object.assign({},remote.cfg,local.cfg),
-    legendExtra:mergeById(remote.legendExtra,local.legendExtra),
-    trash:mergeById(remote.trash,local.trash),
-    userSections:Object.assign({},remote.userSections,local.userSections),
+    legendExtra:mergeById(remote.legendExtra,local.legendExtra,pendingDeletes.legendExtra),
+    trash:mergeById(remote.trash,local.trash,pendingDeletes.trash),
+    userSections:mergeObjExcl(remote.userSections,local.userSections,pendingDeletes.users),
     kpiHistory:mergeByKey(remote.kpiHistory,local.kpiHistory,function(it){return it.date;}),
     phases:local.phases||remote.phases,
     pillars:local.pillars||remote.pillars,
-    taskTypes:mergeByKey(remote.taskTypes,local.taskTypes,function(it){return it;}),
-    userViewOrder:Object.assign({},remote.userViewOrder,local.userViewOrder),
-    calEvents:mergeById(remote.calEvents,local.calEvents),
+    taskTypes:mergeByKey(remote.taskTypes,local.taskTypes,function(it){return it;},pendingDeletes.taskTypes),
+    userViewOrder:mergeObjExcl(remote.userViewOrder,local.userViewOrder,pendingDeletes.users),
+    calEvents:mergeById(remote.calEvents,local.calEvents,pendingDeletes.calEvents),
   };
 }
 
@@ -1012,12 +1036,12 @@ async function saveMain(){
   var local={sections:D.sections,categories:D.categories,people:D.people,cfg:D.cfg,legendExtra:D.legendExtra,trash:D.trash,userSections:D.userSections,kpiHistory:D.kpiHistory,phases:D.phases,pillars:D.pillars,taskTypes:D.taskTypes,userViewOrder:D.userViewOrder,calEvents:D.calEvents};
   var merged=mergeMainState(remote,local);
   var ok=await dbSet('aero_main2',merged);
-  if(ok)Object.assign(D,merged);
+  if(ok){Object.assign(D,merged);clearPendingDeletes();}
   return ok;
 }
 async function saveUsers(){
   var remote=await dbGet('aero_users2');
-  var merged=Object.assign({},remote,D.users);
+  var merged=mergeObjExcl(remote,D.users,pendingDeletes.users);
   var ok=await dbSet('aero_users2',merged);
   if(ok)D.users=merged;
   return ok;
@@ -1354,12 +1378,12 @@ function buildDotsMenu(menu,sec,el){
   if(sec.type==='taller'){item('+ Nova tasca',function(){openRecModal(sec,null,sec.stages?sec.stages[0]:'Pendent');});item('+ Nou estat',function(){genModal('Nou estat','<div class="field"><div class="flbl">Nom</div><input type="text" id="gm-stg" class="finp"></div>',async function(){var s=gv('gm-stg').trim();if(!s)return;saveUndo();if(!sec.stages)sec.stages=[];sec.stages.push(s);cm('gen-modal');await saveMain();refreshSec(sec.id);toast('✓ Afegit');});});item('⚙ Gestionar camps',function(){openFieldsMgr(sec);});}
   if(sec.type==='calendar'){item('+ Nou post',function(){var pls=D.sections.find(function(s){return s.type==='pipeline';});if(pls)openRecModal(pls,null,'Idea');});item('+ Nova data clau',function(){var dls=D.sections.find(function(s){return s.type==='deadlines';});if(dls)openRecModal(dls,null,null);});item('✏️ Editar llegenda',function(){editLegend();});}
   if(sec.type==='sponsors'){item('+ Nou patrocinador',function(){openRecModal(sec,null,null);});item('⚙ Gestionar camps',function(){openFieldsMgr(sec);});}
-  if(sec.type==='trash')item('🗑 Buidar paperera',function(){D.trash=[];saveMain();refreshSec(sec.id);toast('Paperera buidada');});
+  if(sec.type==='trash')item('🗑 Buidar paperera',function(){(D.trash||[]).forEach(function(t){markDeleted('trash',t.id);});D.trash=[];saveMain();refreshSec(sec.id);toast('Paperera buidada');});
   if(!sec.fixed){
     sep();
     item('✏️ Renombrar secció',function(){genModal('Renombrar','<div class="field"><div class="flbl">Nom</div><input type="text" id="gm-n" class="finp" value="'+eq(sec.name)+'"></div><div class="field"><div class="flbl">Descripció</div><input type="text" id="gm-d" class="finp" value="'+eq(sec.desc||'')+'"></div>',async function(){saveUndo();sec.name=gv('gm-n')||sec.name;sec.desc=gv('gm-d');cm('gen-modal');await saveMain();buildTopNav();refreshSec(sec.id);toast('✓ Guardat');});});
     sep();
-    item('× Eliminar secció',async function(){if(!confirm('Eliminar "'+sec.name+'"?'))return;saveUndo();D.sections=D.sections.filter(function(s){return s.id!==sec.id;});await saveMain();buildPage();toast('Secció eliminada');},true);
+    item('× Eliminar secció',async function(){if(!confirm('Eliminar "'+sec.name+'"?'))return;saveUndo();markDeleted('sections',sec.id);D.sections=D.sections.filter(function(s){return s.id!==sec.id;});await saveMain();buildPage();toast('Secció eliminada');},true);
   }
 }
 function openFieldsMgr(sec){
@@ -1656,11 +1680,17 @@ function buildCalGrid(gw,legEl){
     var MAX_SHOW=3;
     dayEvs.slice(0,MAX_SHOW).forEach(function(ev){
       var evEl=mk('div','cal-ev');
-      evEl.style.background='rgba('+hexToRgb(ev.color||'#00c8d4')+',0.18)';
-      evEl.style.color=ev.color||'#00c8d4';
-      evEl.style.borderLeft='2px solid '+(ev.color||'#00c8d4');
-      evEl.textContent=ev.title;
       evEl.title=ev.title+(ev.notes?'\n'+ev.notes:'');
+      if(ev.icon){
+        evEl.classList.add('cal-ev-icon');
+        evEl.style.background='rgba('+hexToRgb(ev.color||'#00c8d4')+',0.18)';
+        evEl.textContent=ev.icon;
+      }else{
+        evEl.style.background='rgba('+hexToRgb(ev.color||'#00c8d4')+',0.18)';
+        evEl.style.color=ev.color||'#00c8d4';
+        evEl.style.borderLeft='2px solid '+(ev.color||'#00c8d4');
+        evEl.textContent=ev.title;
+      }
       if(ev.onClick)evEl.addEventListener('click',function(e){e.stopPropagation();ev.onClick();});
       cell.appendChild(evEl);
     });
@@ -1689,7 +1719,7 @@ function buildCalGrid(gw,legEl){
     var le=D.legendExtra||[];
     cats.forEach(function(cat){
       var it=mk('div','leg-it');
-      it.innerHTML='<div class="leg-sw" style="background:'+cat.color+'"></div>'+esc(cat.name);
+      it.innerHTML='<div class="leg-sw" style="background:'+cat.color+'"></div>'+(cat.icon?esc(cat.icon)+' ':'')+esc(cat.name);
       legEl.appendChild(it);
     });
     le.forEach(function(l){
@@ -1717,7 +1747,7 @@ function collectCalEvents(){
   if(dl)(dl.records||[]).forEach(function(r){
     if(!r.date)return;
     var cat=D.categories.find(function(c){return c.name===r.cat;});
-    add(r.date,{title:r.title,color:cat?cat.color:'#d4a044',notes:r.notes,onClick:function(){var dlSec=D.sections.find(function(s){return s.type==='deadlines';});if(dlSec)openDetailModal(dlSec,r);}});
+    add(r.date,{title:r.title,color:cat?cat.color:'#d4a044',icon:cat&&cat.icon,notes:r.notes,onClick:function(){var dlSec=D.sections.find(function(s){return s.type==='deadlines';});if(dlSec)openDetailModal(dlSec,r);}});
   });
 
   var pl=D.sections.find(function(s){return s.type==='pipeline';});
@@ -1738,7 +1768,7 @@ function collectCalEvents(){
   ce.forEach(function(r){
     if(!r.date)return;
     var cat=D.categories.find(function(c){return c.id===r.catId;});
-    add(r.date,{title:r.title,color:cat?cat.color:'#00c8d4',notes:r.notes,onClick:function(){openCalEventDetail(r);}});
+    add(r.date,{title:r.title,color:cat?cat.color:'#00c8d4',icon:cat&&cat.icon,notes:r.notes,onClick:function(){openCalEventDetail(r);}});
   });
 
   return evs;
@@ -1798,7 +1828,7 @@ function openCalEventDetail(rec){
     var db=mk('button','btn btn-d btn-sm');db.textContent='Eliminar';
     db.addEventListener('click',async function(){
       if(!confirm('Eliminar aquest event?'))return;
-      saveUndo();D.calEvents=(D.calEvents||[]).filter(function(e){return e.id!==rec.id;});
+      saveUndo();markDeleted('calEvents',rec.id);D.calEvents=(D.calEvents||[]).filter(function(e){return e.id!==rec.id;});
       cm('rec-modal');await saveMain();refreshCalendarSection();toast('Event eliminat');
     });
     foot.appendChild(db);
@@ -1847,7 +1877,7 @@ function openCalEventEdit(rec){
     },
     async function(){
       if(!confirm('Eliminar aquest event?'))return;
-      saveUndo();D.calEvents=(D.calEvents||[]).filter(function(e){return e.id!==rec.id;});
+      saveUndo();markDeleted('calEvents',rec.id);D.calEvents=(D.calEvents||[]).filter(function(e){return e.id!==rec.id;});
       cm('gen-modal');await saveMain();refreshCalendarSection();toast('Event eliminat');
     }
   );
@@ -2316,7 +2346,7 @@ function renderSponsors(el,sec){
 
 // ══ TRASH ══
 function renderTrash(el,sec){
-  var inner=mkHdr(sec,isAdmin()?'<button class="btn btn-sm btn-d" onclick="if(confirm(\'Buidar paperera?\')){D.trash=[];saveMain();refreshSec(\''+sec.id+'\');toast(\'Paperera buidada\')}">🗑 Buidar</button>':'');
+  var inner=mkHdr(sec,isAdmin()?'<button class="btn btn-sm btn-d" onclick="emptyTrashNow(\''+sec.id+'\')">🗑 Buidar</button>':'');
   var bw=mk('div','sec-inner');bw.style.paddingTop='0';
   (D.trash||[]).forEach(function(r){
     var it=mk('div','trash-it');
@@ -2326,6 +2356,7 @@ function renderTrash(el,sec){
       rb.addEventListener('click',async function(){
         saveUndo();var sec2=D.sections.find(function(s){return s.name===r._secName;});
         if(sec2){if(!sec2.records)sec2.records=[];delete r._secName;delete r._deleted;sec2.records.push(r);}
+        markDeleted('trash',r.id);
         D.trash=D.trash.filter(function(t){return t.id!==r.id;});
         await saveMain();buildPage();toast('✓ Restaurat');
       });
@@ -2390,7 +2421,7 @@ function openDetailModal(sec,rec){
       if(!confirm('Eliminar aquest element?'))return;
       saveUndo();
       var idx=(sec.records||[]).findIndex(function(r2){return r2.id===rec.id;});
-      if(idx>=0){var del=sec.records.splice(idx,1)[0];if(!D.trash)D.trash=[];del._secName=sec.name;del._deleted=todayStr;D.trash.unshift(del);}
+      if(idx>=0){markRecordDeleted(sec.id,rec.id);var del=sec.records.splice(idx,1)[0];if(!D.trash)D.trash=[];del._secName=sec.name;del._deleted=todayStr;D.trash.unshift(del);}
       cm('rec-modal');await saveMain();refreshSec(sec.id);buildStats_update();toast('Element eliminat');
     });
     foot.appendChild(db);
@@ -2512,6 +2543,7 @@ function openRecModal(sec,rec,defaultStatus){
       saveUndo();
       var idx=(sec.records||[]).findIndex(function(r2){return r2.id===rec.id;});
       if(idx>=0){
+        markRecordDeleted(sec.id,rec.id);
         var del=sec.records.splice(idx,1)[0];
         if(!D.trash)D.trash=[];del._secName=sec.name;del._deleted=todayStr;D.trash.unshift(del);
       }
@@ -2593,7 +2625,7 @@ function editLegend(){
 }
 window.delCat=async function(id){
   if(!confirm('Eliminar categoria?'))return;saveUndo();
-  D.categories=D.categories.filter(function(c){return c.id!==id;});
+  markDeleted('categories',id);D.categories=D.categories.filter(function(c){return c.id!==id;});
   await saveMain();
   var calSec=D.sections.find(function(s){return s.type==='calendar';});
   if(calSec){var el=G('sec-'+calSec.id);if(el)renderSection(el,calSec);}
@@ -2601,7 +2633,7 @@ window.delCat=async function(id){
 };
 window.delLegExtra=async function(id){
   if(!confirm('Eliminar element?'))return;saveUndo();
-  D.legendExtra=(D.legendExtra||[]).filter(function(l){return l.id!==id;});
+  markDeleted('legendExtra',id);D.legendExtra=(D.legendExtra||[]).filter(function(l){return l.id!==id;});
   await saveMain();editLegend();toast('✓ Eliminat');
 };
 window.addLegExtra=function(){
@@ -2782,7 +2814,7 @@ function renderSetPeople(sb){
           async function(){saveUndo();p.name=gv('ep-n')||p.name;p.role=gv('ep-r');p.color=gv('ep-c');cm('gen-modal');await saveMain();buildPeopleList();toast('✓ Guardat');}
         );
       });
-      db.addEventListener('click',async function(){if(!confirm('Eliminar?'))return;saveUndo();D.people.splice(i,1);await saveMain();buildPeopleList();toast('✓ Eliminat');});
+      db.addEventListener('click',async function(){if(!confirm('Eliminar?'))return;saveUndo();markDeleted('people',p.id);D.people.splice(i,1);await saveMain();buildPeopleList();toast('✓ Eliminat');});
       row.appendChild(av);row.appendChild(im);row.appendChild(eb);row.appendChild(db);
       pl.appendChild(row);
     });
@@ -2805,13 +2837,14 @@ function renderSetPeople(sb){
 function renderSetCats(sb){
   function buildCatList(){
     sb.innerHTML='<div class="s-sec"><div class="s-h">Categories del calendari</div>'+
-      '<div class="isub" style="margin-bottom:10px;font-size:11px">Cada categoria pot tenir camps extra que apareixeran al crear un event d\'aquell tipus.</div>'+
+      '<div class="isub" style="margin-bottom:10px;font-size:11px">Cada categoria pot tenir camps extra que apareixeran al crear un event d\'aquell tipus. L\'icona és opcional: si l\'omples, substitueix el text al calendari (útil perquè les cel·les són petites).</div>'+
       '<div id="cats-list"></div>'+
       '<button class="btn btn-sm" id="add-cat-btn" style="margin-top:8px">+ Afegir categoria</button></div>';
     var cl=G('cats-list');
     (D.categories||[]).forEach(function(c,i){
       var row=mk('div','irow');row.style.alignItems='flex-start';row.style.flexWrap='wrap';row.style.gap='6px';row.style.paddingBottom='10px';row.style.borderBottom='1px solid var(--border)';row.style.marginBottom='8px';
       var sw=mk('div','csw');sw.style.cssText='width:14px;height:14px;background:'+c.color+';border-radius:3px;flex-shrink:0;margin-top:3px';
+      var icoSpan=mk('div','');icoSpan.style.cssText='font-size:16px;flex-shrink:0;width:20px;text-align:center';icoSpan.textContent=c.icon||'—';
       var im=mk('div','im');im.style.flex='1';
       im.innerHTML='<div class="iname">'+esc(c.name)+'</div>';
       if(c.extraFields&&c.extraFields.length){
@@ -2826,14 +2859,15 @@ function renderSetCats(sb){
       eb.addEventListener('click',function(){
         genModal('Editar categoria "'+esc(c.name)+'"',
           '<div class="field"><div class="flbl">Nom</div><input type="text" id="ec-n" class="finp" value="'+eq(c.name)+'"></div>'+
-          '<div class="field"><div class="flbl">Color</div><input type="color" id="ec-c" class="finp finp-color" value="'+c.color+'"></div>',
-          async function(){saveUndo();c.name=gv('ec-n')||c.name;c.color=gv('ec-c');cm('gen-modal');await saveMain();buildCatList();toast('✓ Guardat');}
+          '<div class="frow"><div class="field"><div class="flbl">Color</div><input type="color" id="ec-c" class="finp finp-color" value="'+c.color+'"></div>'+
+          '<div class="field"><div class="flbl">Icona (emoji, opcional)</div><input type="text" id="ec-icon" class="finp" value="'+eq(c.icon||'')+'" placeholder="🏛️" style="font-size:18px"></div></div>',
+          async function(){saveUndo();c.name=gv('ec-n')||c.name;c.color=gv('ec-c');c.icon=gv('ec-icon').trim();cm('gen-modal');await saveMain();buildCatList();refreshCalendarSection();toast('✓ Guardat');}
         );
       });
       fb.addEventListener('click',function(){openCatFieldsMgr(c,buildCatList);});
-      db.addEventListener('click',async function(){if(!confirm('Eliminar?'))return;saveUndo();D.categories.splice(i,1);await saveMain();buildCatList();toast('✓ Eliminat');});
+      db.addEventListener('click',async function(){if(!confirm('Eliminar?'))return;saveUndo();markDeleted('categories',c.id);D.categories.splice(i,1);await saveMain();buildCatList();toast('✓ Eliminat');});
       btns.appendChild(fb);btns.appendChild(eb);btns.appendChild(db);
-      row.appendChild(sw);row.appendChild(im);row.appendChild(btns);cl.appendChild(row);
+      row.appendChild(sw);row.appendChild(icoSpan);row.appendChild(im);row.appendChild(btns);cl.appendChild(row);
     });
     G('add-cat-btn').addEventListener('click',function(){window.addCat(buildCatList);});
   }
@@ -2905,11 +2939,12 @@ function openCatFieldNew(cat,cb){
 window.addCat=function(onDone){
   genModal('Nova categoria',
     '<div class="field"><div class="flbl">Nom</div><input type="text" id="nc-n" class="finp"></div>'+
-    '<div class="field"><div class="flbl">Color</div><input type="color" id="nc-c" class="finp finp-color" value="#00c8d4"></div>',
+    '<div class="frow"><div class="field"><div class="flbl">Color</div><input type="color" id="nc-c" class="finp finp-color" value="#00c8d4"></div>'+
+    '<div class="field"><div class="flbl">Icona (opcional)</div><input type="text" id="nc-icon" class="finp" placeholder="🏛️" style="font-size:18px"></div></div>',
     async function(){
       var n=gv('nc-n').trim();if(!n)return;saveUndo();
       if(!D.categories)D.categories=[];
-      D.categories.push({id:Date.now(),name:n,color:gv('nc-c'),extraFields:[]});
+      D.categories.push({id:Date.now(),name:n,color:gv('nc-c'),icon:gv('nc-icon').trim(),extraFields:[]});
       cm('gen-modal');await saveMain();if(onDone)onDone();else renderSettings();toast('✓ Categoria afegida');
     }
   );
@@ -2972,7 +3007,7 @@ function renderSetUsers(sb){
         if(u==='admin'){toast('⚠️ No es pot eliminar l\'usuari admin');return;}
         if(u===currentUser){toast('⚠️ No et pots eliminar a tu mateix');return;}
         if(!confirm('Eliminar l\'usuari "'+name+'"?'))return;
-        saveUndo();delete D.users[u];
+        saveUndo();markDeleted('users',u);delete D.users[u];
         if(D.userSections)delete D.userSections[u];
         if(D.userViewOrder)delete D.userViewOrder[u];
         await saveUsers();await saveMain();buildUserList();toast('✓ Usuari eliminat');
@@ -3047,7 +3082,7 @@ function renderSetTaskTypes(sb){
       var im=mk('div','im');im.innerHTML='<div class="iname">'+esc(t)+'</div>';
       var db=mk('button','btn btn-xs btn-d');db.textContent='×';
       db.addEventListener('click',async function(){
-        saveUndo();D.taskTypes.splice(i,1);await saveMain();buildList();
+        saveUndo();markDeleted('taskTypes',t);D.taskTypes.splice(i,1);await saveMain();buildList();
         D.sections.forEach(function(sec){if(sec.type==='tasks'){var el=G('sec-'+sec.id);if(el)renderSection(el,sec);}});
         toast('✓ Tipus eliminat');
       });
